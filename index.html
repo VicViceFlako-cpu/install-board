@@ -233,6 +233,9 @@ body.on-chat .wrap{padding-bottom:140px}
 .cal-day h3{font:700 1.25rem/1.1 "Barlow Condensed","Arial Narrow",sans-serif;margin:0 0 8px;display:flex;justify-content:space-between;align-items:baseline}
 .cal-day h3 span{font:500 .9rem Barlow,sans-serif;color:var(--muted)}
 .cal-row{display:grid;grid-template-columns:1fr auto;gap:4px 12px;background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--signal);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.cal-row{cursor:pointer;-webkit-tap-highlight-color:transparent}
+.cal-row:active{background:color-mix(in srgb,var(--signal) 8%,var(--surface))}
+.cal-row:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
 .cal-row.done{border-left-color:var(--done)}
 .cal-row .who{font-weight:600}
 .cal-row .mon{font-weight:600;font-variant-numeric:tabular-nums;text-align:right}
@@ -921,6 +924,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       const mo=document.createElement('div'); mo.className='mon'; mo.textContent=i.mon||'No order #';
       const sub=document.createElement('div'); sub.className='sub';
       sub.textContent=[i.customer,i.window,i.status==='installed'?'Installed':(i.rescheduleCount?'Rescheduled '+i.rescheduleCount+'×':'')].filter(Boolean).join(' · ');
+      r.setAttribute('role','button'); r.tabIndex=0; r.setAttribute('aria-label','Order details for '+(i.customer||agentName(i)));
+      r.onclick=()=>openDetail(i.id);
+      r.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); openDetail(i.id); } };
       r.append(w,mo); if(sub.textContent) r.append(sub); box.append(r);
     });
   }

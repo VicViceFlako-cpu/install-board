@@ -208,6 +208,11 @@ body.on-chat .wrap{padding-bottom:140px}
 .item.has-actions{grid-template-rows:auto auto}
 .item.is-cancel{border-left-color:var(--muted);opacity:.62}
 .item.is-cancel .agent{text-decoration:line-through}
+.text-row{grid-column:1/-1;display:flex;border-top:1px solid var(--line);padding-top:10px;margin-top:2px}
+.text-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:44px;border-radius:10px;background:var(--signal);color:#fff;font-weight:600;text-decoration:none;font-size:.95rem}
+.text-btn:active{opacity:.85}
+.text-btn.confirm{background:var(--done)}
+.sheet .text-btn{margin-top:14px}
 .status-row{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-top:1px solid var(--line);padding-top:10px;margin-top:2px}
 .status-q{flex-basis:100%;font-size:.88rem;color:var(--muted)}
 .sbtn{flex:1;min-width:92px;min-height:42px;border-radius:9px;font-weight:600;border:1.5px solid var(--line);background:var(--bg);padding:6px 10px}
@@ -529,6 +534,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const del=document.createElement('button'); del.className='icon del'; del.innerHTML=ICON_DEL; del.setAttribute('aria-label','Delete install');
     del.onclick=()=>removeInstall(i); if(state.canAnnounce) tools.append(del);
     el.append(day,info,tools);
+    { const link=textLink(i); if(link){ const tr=document.createElement('div'); tr.className='text-row'; tr.append(link); el.append(tr); el.classList.add('has-actions'); } }
 
     if(!closed&&(due||open)){
       const row=document.createElement('div'); row.className='status-row';
@@ -597,6 +603,59 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     txt.append(p1,p2); box.append(big,txt);
   }
 
+  // ---------- customer reminder text ----------
+  function titleCase(w){ return w? w.charAt(0).toUpperCase()+w.slice(1).toLowerCase() : ''; }
+  function customerFirst(name){
+    name=(name||'').trim(); if(!name) return '';
+    let first=name.includes(',')? name.split(',')[1].trim().split(/\s+/)[0] : name.split(/\s+/)[0];
+    return first===first.toUpperCase()? titleCase(first) : first;
+  }
+  function myFirstName(){ const n=(state.names&&state.names[state.meId])||((state.profiles||{})[state.meId]||{}).full_name||''; return n.trim().split(/\s+/)[0]||''; }
+  function reminderSms(i){
+    const d=(i.phone||'').replace(/\D/g,''); if(d.length<10) return '';
+    const first=customerFirst(i.customer), me=myFirstName();
+    const win=(i.window||'').replace(/:00/g,'').replace(/\s*(to|-|–)\s*/i,' and ').trim();
+    const body='Hi'+(first?' '+first:'')+'! This is '+(me||'your rep')+' with Verizon. Friendly reminder that your Verizon internet installation is scheduled for today'+(win?', between '+win:'')+'. Please make sure someone 18 or older is home during that time. Reply here with any questions. Thank you!';
+    return 'sms:+1'+d.slice(-10)+'?&body='+encodeURIComponent(body);
+  }
+  // When does the appointment window end today? (no window: assume 5 PM)
+  function windowEnd(i){
+    const d=parseISO(i.installDate); if(!d) return null;
+    const times=[...(i.window||'').matchAll(/(\d{1,2})(?::(\d{2}))?\s*([AaPp])\.?\s*[Mm]/g)];
+    let h=17, m=0;
+    if(times.length){ const t=times[times.length-1]; h=(+t[1])%12+(/p/i.test(t[3])?12:0); m=+(t[2]||0); }
+    const e=new Date(d); e.setHours(h,m,0,0); return e;
+  }
+  // 'remind' before the window ends on install day; 'confirm' after it (or a missed day still open)
+  function textPhase(i){
+    if(!i.phone||(i.phone||'').replace(/\D/g,'').length<10) return null;
+    const canAct=state.canAnnounce||(!!state.meId&&i.agentId===state.meId); if(!canAct) return null;
+    const n=daysFromToday(i.installDate), st=i.status||'scheduled';
+    if(n===null||st==='cancelled') return null;
+    if(n===0){ const end=windowEnd(i); return (end&&Date.now()>=end.getTime())?'confirm':(st==='scheduled'?'remind':'confirm'); }
+    if(n<0&&n>=-3&&st!=='cancelled') return 'confirm';
+    return null;
+  }
+  function confirmSms(i){
+    const d=(i.phone||'').replace(/\D/g,''); const first=customerFirst(i.customer), me=myFirstName();
+    const n=daysFromToday(i.installDate);
+    const when=n===0?'today':'on '+parseISO(i.installDate).toLocaleDateString('en-US',{weekday:'long'});
+    const body='Hi'+(first?' '+first:'')+'! This is '+(me||'your rep')+' with Verizon. Just checking in: was your Verizon internet installation completed '+when+'? If the technician didn\'t make it or anything isn\'t working right, reply here and I\'ll help get it sorted out. Thank you!';
+    return 'sms:+1'+d.slice(-10)+'?&body='+encodeURIComponent(body);
+  }
+  function textLink(i){
+    const ph=textPhase(i); if(!ph) return null;
+    const a=document.createElement('a'); a.className='text-btn'+(ph==='confirm'?' confirm':'');
+    a.href=ph==='remind'?reminderSms(i):confirmSms(i);
+    a.textContent=ph==='remind'?'💬 Text install reminder':'✅ Text install check-in';
+    a.setAttribute('aria-label',(ph==='remind'?'Text install reminder to ':'Text install check-in to ')+(i.customer||'the customer'));
+    return a;
+  }
+  // flip buttons from reminder to check-in when a window ends, without disturbing the screen otherwise
+  let phaseSig='';
+  function phaseSignature(){ return (state.installs||[]).map(i=>i.id+':'+(textPhase(i)||'')).join('|'); }
+  setInterval(()=>{ if(!state.db||document.visibilityState!=='visible') return; const sig=phaseSignature(); if(sig!==phaseSig){ const first=!phaseSig; phaseSig=sig; if(!first&&!state.openItem) render(); } },60000);
+
   // ---------- order detail sheet ----------
   function fmtLong(s){ const d=parseISO(s); return d? d.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric',year:'numeric'}) : '—'; }
   function fmtStamp(t){ if(!t) return ''; const d=new Date(t); return isNaN(d)?'':d.toLocaleDateString(undefined,{month:'short',day:'numeric'})+', '+d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}); }
@@ -629,6 +688,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     if(st!=='scheduled'&&i.statusAt) row(st==='installed'?'Marked installed':'Marked cancelled', fmtStamp(i.statusAt)+(i.statusBy?' by '+personName(i.statusBy):''));
     row('Added', [fmtStamp(i.createdAt), i.createdBy?'by '+personName(i.createdBy):''].filter(Boolean).join(' '));
     sh.append(dl);
+    { const link=textLink(i); if(link) sh.append(link); }
     const hist=Array.isArray(i.history)?i.history:[];
     if(hist.length){
       const t=document.createElement('h3'); t.textContent='Reschedules ('+hist.length+')'; sh.append(t);

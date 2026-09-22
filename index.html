@@ -9,6 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Installs">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#172031">
+<link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" href="icon.png">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
@@ -127,6 +128,27 @@ button{cursor:pointer}
 .hist{list-style:none;margin:0;padding:0;font-size:.9rem}
 .hist li{padding:6px 0;border-top:1px solid var(--line)}
 .hist li small{display:block;color:var(--muted)}
+.tabs.four{grid-template-columns:repeat(4,1fr)}
+.tabs.four .tab{font-size:.9rem;padding:0 2px}
+.team-sec{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px}
+.team-sec h2{font-size:1.05rem;margin:0 0 4px}
+.team-sec p.note{color:var(--muted);font-size:.9rem;margin:0 0 12px}
+.team-form{display:grid;gap:10px}
+.team-form label{display:grid;gap:4px;font-size:.88rem;color:var(--muted)}
+.team-form input,.team-form select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 12px;min-height:44px}
+.team-msg{font-size:.9rem;margin-top:8px}
+.team-msg.err{color:var(--danger)}
+.team-msg.ok{color:var(--done)}
+.welcome{white-space:pre-wrap;background:var(--bg);border:1px dashed var(--line);border-radius:10px;padding:10px 12px;font-size:.88rem;margin-top:10px}
+.row-btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.person{border-top:1px solid var(--line);padding:12px 0}
+.person:first-of-type{border-top:0}
+.person .pn{font-weight:600;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.person .pe{color:var(--muted);font-size:.88rem;overflow-wrap:anywhere}
+.tag{font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--line);color:var(--ink)}
+.tag.mgr{background:color-mix(in srgb,var(--signal) 20%,transparent)}
+.tag.off{background:rgba(180,35,24,.16);color:var(--danger)}
+.person.off .pn,.person.off .pe{opacity:.6}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:500;opacity:0;pointer-events:none;transition:opacity .2s}
 .toast.show{opacity:1}
 .offline{background:var(--today-soft);border:1px solid var(--today);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:.95rem}
@@ -253,6 +275,13 @@ body.on-chat .wrap{padding-bottom:140px}
 .gate .back{background:none;border:0;color:var(--signal);font-weight:600;margin-top:12px;padding:6px 0}
 .gate .err{color:var(--danger);font-size:.95rem;min-height:1.4em;margin-top:10px}
 .whoami{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.who-btns{display:flex;gap:14px}
+.alert-banner{display:flex;align-items:center;gap:10px;background:color-mix(in srgb,var(--signal) 12%,var(--surface));border:1px solid color-mix(in srgb,var(--signal) 35%,var(--line));border-radius:12px;padding:10px 12px;margin-bottom:14px;font-size:.92rem}
+.alert-banner p{margin:0;flex:1}
+.alert-banner .x{background:none;border:0;color:var(--muted);font-size:1.2rem;padding:0 4px}
+.al-list{margin:8px 0 0;padding-left:1.1em;color:var(--muted);font-size:.92rem}
+.al-list li{margin:3px 0}
+.al-state{font-weight:600;margin:4px 0 10px}
 .whoami button{background:none;border:0;color:var(--muted);font-size:.9rem;padding:4px 0}
 [hidden]{display:none!important}
 
@@ -281,13 +310,14 @@ body.on-chat .wrap{padding-bottom:140px}
   </div>
 </div>
 <div class="wrap">
-  <div class="whoami"><h1>Install Board</h1><button id="signOut" hidden>Sign out</button></div>
+  <div class="whoami"><h1>Install Board</h1><div class="who-btns"><button id="alertsBtn" hidden>🔔 Alerts</button><button id="signOut" hidden>Sign out</button></div></div>
   <p class="sub">Your team's WiFi installs and chat in one place.</p>
 
   <nav class="tabs" role="tablist">
     <button class="tab" role="tab" id="tabInstalls" aria-selected="true">Installs</button>
     <button class="tab" role="tab" id="tabCal" aria-selected="false">Calendar</button>
     <button class="tab" role="tab" id="tabChat" aria-selected="false">Chat<span id="unread" class="badge" hidden></span></button>
+    <button class="tab" role="tab" id="tabTeam" aria-selected="false" hidden>Team</button>
   </nav>
 
   <section id="pinned" class="pinned" hidden></section>
@@ -295,6 +325,7 @@ body.on-chat .wrap{padding-bottom:140px}
   <div id="offline" class="offline" hidden>Can't reach the database right now. Check your connection, then reload.</div>
 
   <div id="viewInstalls">
+  <div id="alertBanner" class="alert-banner" hidden><p>🔔 Get a heads-up for new sales, messages and tomorrow's installs.</p><button id="alertBannerOn" class="btn btn-primary btn-small">Turn on</button><button id="alertBannerX" class="x" aria-label="Not now">×</button></div>
   <section id="next" class="next" hidden aria-live="polite"></section>
 
   <div class="actions">
@@ -326,6 +357,32 @@ body.on-chat .wrap{padding-bottom:140px}
     </div>
     <div id="calGrid" class="cal-grid" role="grid"></div>
     <section id="calDay" class="cal-day" aria-live="polite"></section>
+  </div>
+
+  <div id="viewTeam" hidden>
+    <section class="team-sec">
+      <h2>Export orders</h2>
+      <p class="note">Every order on the board as a spreadsheet file (opens in Excel, Numbers or Google Sheets). Good for payouts and keeping a backup.</p>
+      <div class="row-btns" style="margin-top:0"><button id="expBtn" class="btn btn-primary btn-small">Prepare spreadsheet</button><button id="expSave" class="btn btn-ghost btn-small" hidden>Save / share file</button></div>
+      <div id="expMsg" class="team-msg" role="status"></div>
+    </section>
+    <section class="team-sec">
+      <h2>Add a teammate</h2>
+      <p class="note">They sign in with this email and password. Nothing gets sent automatically; you'll get a message to text them.</p>
+      <div class="team-form">
+        <label>Name<input id="tmName" autocomplete="off" autocapitalize="words"></label>
+        <label>Email<input id="tmEmail" type="email" inputmode="email" autocapitalize="off" autocomplete="off"></label>
+        <label>Starter password<input id="tmPass" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="At least 6 characters"></label>
+        <label>Role<select id="tmRole"><option value="agent">Agent</option><option value="manager">Manager</option></select></label>
+        <button id="tmAdd" class="btn btn-primary">Add teammate</button>
+      </div>
+      <div id="tmMsg" class="team-msg" role="status"></div>
+    </section>
+    <section class="team-sec">
+      <h2>Team</h2>
+      <p class="note">Deactivating someone blocks sign-in but keeps all their orders credited to them.</p>
+      <div id="teamList"></div>
+    </section>
   </div>
 
   <div id="viewChat" hidden>
@@ -867,8 +924,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   }
   function showTab(t){
     state.tab=t;
-    $('#tabInstalls').setAttribute('aria-selected',t==='installs'); $('#tabChat').setAttribute('aria-selected',t==='chat'); $('#tabCal').setAttribute('aria-selected',t==='calendar');
-    $('#viewInstalls').hidden=t!=='installs'; $('#viewChat').hidden=t!=='chat'; $('#viewCal').hidden=t!=='calendar';
+    $('#tabInstalls').setAttribute('aria-selected',t==='installs'); $('#tabChat').setAttribute('aria-selected',t==='chat'); $('#tabCal').setAttribute('aria-selected',t==='calendar'); $('#tabTeam').setAttribute('aria-selected',t==='team');
+    $('#viewInstalls').hidden=t!=='installs'; $('#viewChat').hidden=t!=='chat'; $('#viewCal').hidden=t!=='calendar'; $('#viewTeam').hidden=t!=='team';
+    if(t==='team') loadTeam();
     if(t==='calendar') renderCal();
     $('#composer').hidden=t!=='chat'; document.body.classList.toggle('on-chat',t==='chat');
     if(t==='chat'){ renderChat(); markSeen(); requestAnimationFrame(()=>window.scrollTo(0,document.body.scrollHeight)); }
@@ -877,6 +935,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   $('#tabInstalls').onclick=()=>showTab('installs');
   $('#tabChat').onclick=()=>showTab('chat');
   $('#tabCal').onclick=()=>showTab('calendar');
+  $('#tabTeam').onclick=()=>showTab('team');
 
   // ---------- calendar ----------
   function calInstalls(){
@@ -1120,6 +1179,187 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     return {text:out, mentions:[...ids]};
   }
 
+  // ---------- team (managers) ----------
+  async function teamCall(body){
+    const {data,error}=await sb.functions.invoke('team-admin',{body});
+    if(error){ let msg=''; try{ msg=(await error.context.json()).error; }catch(_){} throw new Error(msg||'Couldn\'t reach the server. Check your connection and try again.'); }
+    if(data&&data.error) throw new Error(data.error);
+    return data;
+  }
+  function tmSay(el,text,kind){ el.className='team-msg'+(kind?' '+kind:''); el.textContent=text; }
+  function appLink(){ return location.origin+location.pathname.replace(/index\.html$/,''); }
+  function welcomeText(name,email,pass){ return 'Hi '+(name||'')+'! Our team install board is live \uD83D\uDCE1\nLink: '+appLink()+'\nEmail: '+email+'\nPassword: '+pass+'\n\nOpen the link in Safari, sign in, then tap Share \u2192 Add to Home Screen so it works like an app.'; }
+  function shareText(text){
+    if(navigator.share){ navigator.share({text}).catch(()=>{}); return; }
+    if(navigator.clipboard) navigator.clipboard.writeText(text).then(()=>toast('Copied')).catch(()=>{});
+  }
+  async function loadTeam(){
+    const box=$('#teamList'); if(!box.children.length) box.innerHTML='<p class="note">Loading team…</p>';
+    try{ const {users}=await teamCall({action:'list'}); renderTeam(users||[]); }
+    catch(e){ box.innerHTML=''; const p=document.createElement('p'); p.className='team-msg err'; p.textContent=e.message; box.append(p); }
+  }
+  function renderTeam(users){
+    const box=$('#teamList'); box.innerHTML='';
+    users.sort((a,b)=>(b.active-a.active)||(a.role===b.role?0:a.role==='manager'?-1:1)||(a.name||a.email).localeCompare(b.name||b.email));
+    users.forEach(u=>{
+      const row=document.createElement('div'); row.className='person'+(u.active?'':' off');
+      const pn=document.createElement('div'); pn.className='pn'; pn.textContent=(u.name||'(no name yet)')+(u.isMe?' (you)':'');
+      if(u.role==='manager'){ const t=document.createElement('span'); t.className='tag mgr'; t.textContent='Manager'; pn.append(t); }
+      if(!u.active){ const t=document.createElement('span'); t.className='tag off'; t.textContent='Deactivated'; pn.append(t); }
+      const pe=document.createElement('div'); pe.className='pe';
+      pe.textContent=u.email+' · '+(u.lastSignIn?'last signed in '+fmtStamp(u.lastSignIn):'hasn\'t signed in yet');
+      row.append(pn,pe);
+      const btns=document.createElement('div'); btns.className='row-btns';
+      const mk=(label,fn)=>{ const b=document.createElement('button'); b.type='button'; b.className='btn btn-ghost btn-small'; b.textContent=label; b.onclick=async()=>{ b.disabled=true; try{ await fn(); }catch(e){ toast(e.message); } b.disabled=false; }; btns.append(b); };
+      mk('Reset password',async()=>{
+        const pw=prompt('New password for '+(u.name||u.email)+' (at least 6 characters):'); if(pw==null) return;
+        if(pw.length<6){ toast('Password needs at least 6 characters.'); return; }
+        await teamCall({action:'reset_password',userId:u.id,password:pw}); toast('Password updated');
+        if(!u.isMe&&confirm('Send '+(u.name||'them')+' their new sign-in details?')) shareText(welcomeText(u.name,u.email,pw));
+      });
+      mk('Rename',async()=>{
+        const nm=prompt('Name shown on the board:',u.name||''); if(nm==null||!nm.trim()) return;
+        await teamCall({action:'set_name',userId:u.id,name:nm.trim()}); toast('Name updated'); loadTeam();
+      });
+      if(!u.isMe){
+        mk(u.role==='manager'?'Make agent':'Make manager',async()=>{
+          const to=u.role==='manager'?'agent':'manager';
+          if(!confirm('Make '+(u.name||u.email)+' '+(to==='manager'?'a manager? Managers can delete orders, change anyone\'s orders, post announcements and manage the team.':'an agent?'))) return;
+          await teamCall({action:'set_role',userId:u.id,role:to}); toast('Role updated'); loadTeam();
+        });
+        mk(u.active?'Deactivate':'Reactivate',async()=>{
+          if(u.active&&!confirm('Deactivate '+(u.name||u.email)+'? They won\'t be able to sign in. Their orders stay credited to them, and you can reactivate them anytime.')) return;
+          await teamCall({action:'set_active',userId:u.id,active:!u.active}); toast(u.active?'Deactivated':'Reactivated'); loadTeam();
+        });
+      }
+      row.append(btns); box.append(row);
+    });
+  }
+  $('#tmAdd').onclick=async()=>{
+    const name=$('#tmName').value.trim(), email=$('#tmEmail').value.trim().toLowerCase(), pass=$('#tmPass').value, role=$('#tmRole').value, msg=$('#tmMsg');
+    if(!name||!email||!pass){ tmSay(msg,'Fill in name, email and password.','err'); return; }
+    if(pass.length<6){ tmSay(msg,'Password needs at least 6 characters.','err'); return; }
+    const b=$('#tmAdd'); b.disabled=true; b.textContent='Adding…'; tmSay(msg,'');
+    try{
+      await teamCall({action:'create',name,email,password:pass,role});
+      const text=welcomeText(name,email,pass);
+      msg.className='team-msg ok'; msg.innerHTML='';
+      msg.append(name+' is added. Send them this:');
+      const w=document.createElement('div'); w.className='welcome'; w.textContent=text; msg.append(w);
+      const sbtn=document.createElement('button'); sbtn.type='button'; sbtn.className='btn btn-ghost btn-small'; sbtn.style.marginTop='8px'; sbtn.textContent='Text / share this message'; sbtn.onclick=()=>shareText(text); msg.append(sbtn);
+      $('#tmName').value=''; $('#tmEmail').value=''; $('#tmPass').value=''; $('#tmRole').value='agent';
+      loadTeam();
+    }catch(e){ tmSay(msg,e.message,'err'); }
+    b.disabled=false; b.textContent='Add teammate';
+  };
+
+  // ---------- export (managers) ----------
+  let exportFile=null;
+  function csvCell(v){ v=v==null?'':String(v); return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
+  function ymd(s){ const d=parseISO(s); return d? (d.getMonth()+1)+'/'+d.getDate()+'/'+d.getFullYear() : ''; }
+  function stamp(t){ if(!t) return ''; const d=new Date(t); return isNaN(d)?'':(d.getMonth()+1)+'/'+d.getDate()+'/'+d.getFullYear()+' '+d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
+  $('#expBtn').onclick=async()=>{
+    const b=$('#expBtn'), msg=$('#expMsg'); b.disabled=true; $('#expSave').hidden=true; tmSay(msg,'Gathering orders…');
+    try{
+      const rows=[]; const step=1000;
+      for(let from=0;;from+=step){
+        const {data,error}=await sb.from('installs').select('*').order('install_date',{ascending:true}).range(from,from+step-1);
+        if(error) throw new Error('Couldn\'t load orders. Check your connection and try again.');
+        rows.push(...data); if(data.length<step) break;
+      }
+      const {data:profs}=await sb.from('profiles').select('id,full_name');
+      const nm={}; (profs||[]).forEach(p=>nm[p.id]=p.full_name||'');
+      const head=['Order # (MON)','Customer','Sales agent','Sale date','Install date','Appointment','Status','Verizon status','Address','Phone','Reschedules','Added by','Added on','Status updated','Status updated by'];
+      const lines=[head.map(csvCell).join(',')];
+      rows.forEach(r=>{
+        lines.push([r.mon||'',r.customer,nm[r.agent_id]||'',ymd(r.sale_date),ymd(r.install_date),r.appt_window,
+          r.status==='installed'?'Installed':r.status==='cancelled'?'Cancelled':'Scheduled',r.vz_status,r.address,fmtPhone(r.phone),
+          r.reschedule_count||0,nm[r.created_by]||'',stamp(r.created_at),stamp(r.status_at),nm[r.status_by]||''].map(csvCell).join(','));
+      });
+      const name='install-board-orders-'+todayISO()+'.csv';
+      exportFile=new File(['\uFEFF'+lines.join('\r\n')],name,{type:'text/csv'});
+      tmSay(msg,rows.length+(rows.length===1?' order':' orders')+' ready. Tap "Save / share file" to save it to Files, email it, or open it in Numbers.','ok');
+      $('#expSave').hidden=false;
+    }catch(e){ tmSay(msg,e.message,'err'); }
+    b.disabled=false; b.textContent='Prepare spreadsheet again';
+  };
+  $('#expSave').onclick=()=>{
+    if(!exportFile) return;
+    if(navigator.canShare&&navigator.canShare({files:[exportFile]})){ navigator.share({files:[exportFile],title:exportFile.name}).catch(()=>{}); return; }
+    const url=URL.createObjectURL(exportFile); const a=document.createElement('a'); a.href=url; a.download=exportFile.name; document.body.append(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),30000);
+  };
+
+  // ---------- alerts (push notifications) ----------
+  const VAPID_PUBLIC='BL12I5LLNFyhaBNJquLsS1dRAGkb_NqbxamtvWVMijKwyDKmop63CU1kou9L-AwKfow9AHxwyXeDhATcLORMvkI';
+  const isStandalone=()=>window.navigator.standalone===true||window.matchMedia('(display-mode: standalone)').matches;
+  const pushCapable=()=>'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;
+  const isiOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  let swReg=null;
+  if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').then(r=>{ swReg=r; }).catch(()=>{}); 
+    navigator.serviceWorker.addEventListener('message',e=>{ const h=e.data&&e.data.hash; openHash(h); }); }
+  function openHash(h){ if(!state.db) return; if(h==='#chat') showTab('chat'); else if(h==='#installs') showTab('installs'); }
+  function b64u(str){ const pad='='.repeat((4-str.length%4)%4); const raw=atob((str+pad).replace(/-/g,'+').replace(/_/g,'/')); return Uint8Array.from([...raw].map(c=>c.charCodeAt(0))); }
+  async function currentSub(){ if(!pushCapable()) return null; const reg=swReg||await navigator.serviceWorker.ready; return reg.pushManager.getSubscription(); }
+  async function alertsOn(){ return pushCapable()&&Notification.permission==='granted'&&!!(await currentSub().catch(()=>null)); }
+  async function saveSub(sub){ const j=sub.toJSON(); const {error}=await sb.rpc('save_push_subscription',{p_endpoint:j.endpoint,p_p256dh:j.keys.p256dh,p_auth:j.keys.auth}); if(error) throw new Error('Couldn\'t save alert settings. Try again.'); }
+  async function enableAlerts(){
+    if(!pushCapable()) throw new Error(isiOS&&!isStandalone()?'Open the app from your Home Screen icon first, then turn on alerts.':'This phone or browser can\'t get alerts. On iPhone, update to iOS 16.4 or newer.');
+    const perm=await Notification.requestPermission();
+    if(perm!=='granted') throw new Error('Alerts are blocked. Go to iPhone Settings → Notifications → Installs and allow notifications.');
+    const reg=swReg||await navigator.serviceWorker.ready;
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub) sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64u(VAPID_PUBLIC)});
+    await saveSub(sub);
+    sb.functions.invoke('push',{body:{action:'test'}}).catch(()=>{});
+  }
+  async function disableAlerts(){ const sub=await currentSub(); if(!sub) return; const ep=sub.endpoint; await sub.unsubscribe().catch(()=>{}); await sb.rpc('remove_push_subscription',{p_endpoint:ep}); }
+  async function refreshAlertUI(){
+    const on=await alertsOn().catch(()=>false);
+    $('#alertsBtn').hidden=!state.db; $('#alertsBtn').textContent=on?'🔔 Alerts on':'🔔 Alerts';
+    let dismissed=false; try{ dismissed=localStorage.getItem('alertBannerX')==='1'; }catch(_){}
+    $('#alertBanner').hidden=on||dismissed||!state.db||(pushCapable()&&Notification.permission==='denied');
+    return on;
+  }
+  async function syncAlerts(){ try{ if(pushCapable()&&Notification.permission==='granted'){ const sub=await currentSub(); if(sub) await saveSub(sub); } }catch(_){} refreshAlertUI(); }
+  async function openAlerts(){
+    state.detailId=null;
+    const wrap=$('#sheet'), sh=wrap.querySelector('.sheet'); sh.innerHTML='';
+    const head=document.createElement('div'); head.className='sheet-head';
+    const h=document.createElement('h2'); h.id='sheetTitle'; h.textContent='Alerts';
+    const x=document.createElement('button'); x.className='sheet-x'; x.type='button'; x.setAttribute('aria-label','Close'); x.textContent='×'; x.onclick=closeDetail;
+    head.append(h,x); sh.append(head);
+    const on=await alertsOn().catch(()=>false);
+    const st=document.createElement('p'); st.className='al-state'; sh.append(st);
+    const note=document.createElement('p'); note.className='note'; note.style.color='var(--muted)';
+    const btns=document.createElement('div'); btns.className='row-btns';
+    const mk=(label,cls,fn)=>{ const b=document.createElement('button'); b.type='button'; b.className='btn btn-small '+cls; b.textContent=label; b.onclick=async()=>{ b.disabled=true; try{ await fn(); }catch(e){ toast(e.message||'Something went wrong.'); } b.disabled=false; }; btns.append(b); };
+    if(!pushCapable()){
+      st.textContent='Alerts aren\'t available here yet';
+      note.textContent=isiOS&&!isStandalone()?'On iPhone, alerts only work in the Home Screen app. In Safari, tap Share → Add to Home Screen, then open Install Board from that icon and come back here.':'Your phone needs a newer version to get alerts. On iPhone, update to iOS 16.4 or newer (Settings → General → Software Update).';
+    } else if(Notification.permission==='denied'){
+      st.textContent='Alerts are blocked on this phone';
+      note.textContent='Open iPhone Settings → Notifications → Installs, turn on Allow Notifications, then come back here.';
+    } else if(on){
+      st.textContent='✅ Alerts are on for this phone';
+      mk('Send a test alert','btn-ghost',async()=>{ const {data,error}=await sb.functions.invoke('push',{body:{action:'test'}}); if(error||!data||!data.sent) throw new Error('Test didn\'t go through. Turn alerts off and on again.'); toast('Test sent'); });
+      mk('Turn off on this phone','btn-ghost',async()=>{ await disableAlerts(); toast('Alerts off'); await refreshAlertUI(); openAlerts(); });
+    } else {
+      st.textContent='Alerts are off for this phone';
+      mk('Turn on alerts','btn-primary',async()=>{ await enableAlerts(); toast('Alerts on'); await refreshAlertUI(); openAlerts(); });
+    }
+    if(note.textContent) sh.append(note);
+    sh.append(btns);
+    const t=document.createElement('h3'); t.textContent='You\'ll get alerts for'; sh.append(t);
+    const ul=document.createElement('ul'); ul.className='al-list';
+    const items=['📣 Announcements','💬 Team chat messages, and when someone @mentions you','📡 Your installs today (10 AM reminder)','🗓 Your installs for tomorrow (7 PM reminder)','✅ When someone else updates one of your orders','💰 When a manager adds a sale for you'];
+    if(state.canAnnounce) items.push('💰 Every new sale, and order updates from agents (managers only)');
+    items.forEach(tx=>{ const li=document.createElement('li'); li.textContent=tx; ul.append(li); }); sh.append(ul);
+    wrap.hidden=false; document.body.style.overflow='hidden';
+  }
+  $('#alertsBtn').onclick=openAlerts;
+  $('#alertBannerOn').onclick=async()=>{ const b=$('#alertBannerOn'); b.disabled=true; try{ await enableAlerts(); toast('Alerts on'); }catch(e){ toast(e.message); if(!pushCapable()) openAlerts(); } b.disabled=false; refreshAlertUI(); };
+  $('#alertBannerX').onclick=()=>{ try{ localStorage.setItem('alertBannerX','1'); }catch(_){} $('#alertBanner').hidden=true; };
+
   // ---------- wiring ----------
   $('#uploadBtn').onclick=()=>{ clearShot(); state.pendingCredit=state.meId||''; openPaste(); };
   $('#manualBtn').onclick=()=>{ clearShot(); openReview([{agentId:state.meId||'',agent:'',saleDate:todayISO(),installDate:''}],{title:'Add install',hint:'Enter the dates, then save.'}); ensureNames([state.meId]); };
@@ -1225,7 +1465,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       state.profiles[state.meId]={...(state.profiles[state.meId]||{id:state.meId}),full_name:name};
       gateStep(null); startBoard();
     };
-    $('#signOut').onclick=async()=>{ if(!confirm('Sign out of the Install Board?')) return; await sb.auth.signOut(); location.reload(); };
+    $('#signOut').onclick=async()=>{ if(!confirm('Sign out of the Install Board?')) return; try{ await disableAlerts(); }catch(_){} await sb.auth.signOut(); location.reload(); };
 
     let started=false;
     async function onSession(session){
@@ -1245,8 +1485,10 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       $('#signOut').hidden=false;
       state.user=makeUser(); state.assets=assetsApi; state.db=makeDb();
       state.canAnnounce=(state.profiles[state.meId]||{}).role==='manager';
+      $('#tabTeam').hidden=!state.canAnnounce; document.querySelector('.tabs').classList.toggle('four',state.canAnnounce);
       $('#annBtn').hidden=!state.canAnnounce; $('#composerIn').classList.toggle('admin',state.canAnnounce);
       const sbtn=$('#saveBtn'); if(sbtn) sbtn.disabled=false;
+      setTimeout(()=>{ syncAlerts(); openHash(location.hash); },0);
       // keep teammate names fresh as people join
       sb.channel('rt-profiles').on('postgres_changes',{event:'*',schema:'public',table:'profiles'},async()=>{ await loadProfiles(); state.names={}; ensureNames(Object.keys(state.profiles)); if(state.tab==='chat') renderChat(); }).subscribe();
       ensureNames(Object.keys(state.profiles));

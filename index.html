@@ -103,6 +103,12 @@ button{cursor:pointer}
 .icon.del{color:var(--danger)}
 .empty{text-align:center;color:var(--muted);padding:36px 12px;border:2px dashed var(--line);border-radius:14px;margin-top:18px}
 .toggle-past{margin-top:18px}
+.ptr{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 8px);width:38px;height:38px;margin-left:-19px;border-radius:50%;background:var(--surface);border:1px solid var(--line);box-shadow:0 2px 10px rgba(0,0,0,.18);display:grid;place-items:center;z-index:40;opacity:0;transform:translateY(-60px);pointer-events:none;color:var(--signal)}
+.ptr svg{width:20px;height:20px;transition:transform .15s}
+.ptr.ready svg{transform:rotate(180deg)}
+.ptr.spin svg{animation:ptrspin .8s linear infinite}
+@keyframes ptrspin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.ptr.spin svg{animation:none}}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:500;opacity:0;pointer-events:none;transition:opacity .2s}
 .toast.show{opacity:1}
 .offline{background:var(--today-soft);border:1px solid var(--today);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:.95rem}
@@ -233,6 +239,7 @@ body.on-chat .wrap{padding-bottom:140px}
 </style>
 </head>
 <body>
+<div id="ptr" class="ptr" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg></div>
 <div id="gate" class="gate">
   <div class="gate-card">
     <h1>Install Board</h1>
@@ -1190,6 +1197,25 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     sb.auth.getSession().then(({data})=>onSession(data.session));
     sb.auth.onAuthStateChange((ev,session)=>{ if(ev==='SIGNED_IN'&&!started) onSession(session); if(ev==='SIGNED_OUT') location.reload(); });
   }
+})();
+</script>
+
+<script>
+// Pull down to refresh (Home Screen app only; regular Safari already has its own)
+(function(){
+  const standalone=window.navigator.standalone===true||window.matchMedia('(display-mode: standalone)').matches;
+  if(!standalone) return;
+  const ind=document.getElementById('ptr'); const TH=75; let y0=null, dist=0, busy=false;
+  const blocked=t=>t.closest('input,textarea,select,.composer,.suggest,#gate:not([hidden])')||!document.getElementById('review').hidden;
+  const show=d=>{ const p=Math.min(d/TH,1); ind.style.opacity=p; ind.style.transform='translateY('+(Math.min(d,TH+20)-60)+'px)'; ind.classList.toggle('ready',d>=TH); };
+  window.addEventListener('touchstart',e=>{ if(busy||window.scrollY>0||e.touches.length!==1||blocked(e.target)){ y0=null; return; } y0=e.touches[0].clientY; dist=0; },{passive:true});
+  window.addEventListener('touchmove',e=>{ if(y0===null) return; const d=(e.touches[0].clientY-y0)*0.5; if(d<=0||window.scrollY>0){ dist=0; show(0); return; } dist=d; if(e.cancelable) e.preventDefault(); show(d); },{passive:false});
+  window.addEventListener('touchend',async()=>{ if(y0===null) return; y0=null;
+    if(dist<TH){ ind.style.transition='transform .2s,opacity .2s'; show(0); setTimeout(()=>ind.style.transition='',200); return; }
+    busy=true; ind.classList.remove('ready'); ind.classList.add('spin'); ind.style.opacity=1; ind.style.transform='translateY('+(TH-40)+'px)';
+    try{ await fetch(location.href.split('#')[0],{cache:'reload'}); }catch(_){}
+    location.reload();
+  });
 })();
 </script>
 </body>

@@ -51,6 +51,7 @@ button{cursor:pointer}
 .next .big{font:700 3rem/0.9 "Barlow Condensed","Arial Narrow",sans-serif;text-align:center;min-width:64px}
 .next .big small{display:block;font-size:1rem;letter-spacing:.04em;opacity:.8}
 .next p{margin:0}
+.mon-tag{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.72em;font-weight:500;color:var(--muted);letter-spacing:.02em;white-space:nowrap}
 .next .who{font-weight:600;font-size:1.1rem}
 .next .meta{opacity:.75;font-size:.95rem}
 
@@ -417,17 +418,17 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     day.querySelector('i').textContent=d? d.toLocaleDateString(undefined,{month:'short'})+' · '+weekday(i.installDate) : 'no date';
     const info=document.createElement('div'); info.className='info';
     const a=document.createElement('div'); a.className='agent'; a.textContent=i.customer||agentName(i);
+    if(i.mon){ const mo=document.createElement('span'); mo.className='mon-tag'; mo.textContent=i.mon; a.append(' ',mo); }
     const m=document.createElement('div'); m.className='meta';
     const when=st==='installed'?' · installed':st==='cancelled'?' · cancelled':n===0?' · due today':n===1?' · tomorrow':(n>1?' · in '+n+' days':(n<0?' · '+Math.abs(n)+(Math.abs(n)===1?' day':' days')+' overdue':''));
     const rs=(i.rescheduleCount||0)>0?' · rescheduled '+i.rescheduleCount+'×':'';
     m.textContent=(i.customer?agentName(i)+' · ':'')+(i.window?i.window.replace(/:00/g,'').replace(/\s*to\s*/i,'–')+' · ':'')+'Sold '+fmtShort(i.saleDate)+when+rs;
     info.append(a,m);
-    if(i.address||i.mon||i.phone){
+    if(i.address||i.phone){
       const x=document.createElement('div'); x.className='meta addr';
       if(i.address){ const ad=document.createElement('a'); ad.href='https://maps.apple.com/?q='+encodeURIComponent(i.address); ad.target='_blank'; ad.rel='noopener'; ad.textContent=i.address; x.append(ad); }
       if(i.phone){ if(x.childNodes.length) x.append(' · '); const ph=document.createElement('a'); ph.href='tel:'+i.phone; ph.textContent=fmtPhone(i.phone); x.append(ph); }
-      if(i.mon){ if(x.childNodes.length) x.append(' · '); x.append(i.mon); }
-      info.append(x);
+      if(x.childNodes.length) info.append(x);
     }
     const tools=document.createElement('div'); tools.className='item-tools';
     if(!canAct){ /* not their order: view only */ }

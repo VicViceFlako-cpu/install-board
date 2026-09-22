@@ -406,7 +406,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
   function itemEl(i){
     const n=daysFromToday(i.installDate), st=i.status||'scheduled';
-    const closed=st==='installed'||st==='cancelled', due=!closed&&n!==null&&n<=0;
+    const closed=st==='installed'||st==='cancelled', canAct=state.canAnnounce||(!!state.meId&&i.agentId===state.meId), due=!closed&&n!==null&&n<=0&&canAct;
     const open=state.openItem===i.id;
     const el=document.createElement('div');
     el.className='item'+(st==='installed'?' is-done':st==='cancelled'?' is-cancel':n===0?' is-today':(n!==null&&n<0)?' is-late':'')+(due||open?' has-actions':'');
@@ -430,7 +430,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       info.append(x);
     }
     const tools=document.createElement('div'); tools.className='item-tools';
-    if(closed){
+    if(!canAct){ /* not their order: view only */ }
+    else if(closed){
       const undo=document.createElement('button'); undo.className='icon'; undo.innerHTML=ICON_UNDO;
       undo.setAttribute('aria-label','Move back to scheduled'); undo.onclick=()=>setStatus(i.id,'scheduled'); tools.append(undo);
     } else if(!due){
@@ -438,7 +439,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       up.setAttribute('aria-expanded',open); up.onclick=()=>{ state.openItem=open?null:i.id; state.openMode='actions'; render(); }; tools.append(up);
     }
     const del=document.createElement('button'); del.className='icon del'; del.innerHTML=ICON_DEL; del.setAttribute('aria-label','Delete install');
-    del.onclick=()=>removeInstall(i); tools.append(del);
+    del.onclick=()=>removeInstall(i); if(state.canAnnounce) tools.append(del);
     el.append(day,info,tools);
 
     if(!closed&&(due||open)){
@@ -553,7 +554,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     ['customer','window','mon','address'].forEach(f=>{ r.querySelector('[data-f='+f+']').value=d[f]||''; });
     r.querySelector('[data-f=phone]').value=fmtPhone(d.phone);
     const ex=d.mon&&state.installs.find(i=>i.mon&&i.mon===d.mon);
-    if(ex){ const dn=r.querySelector('.dup-note'); dn.hidden=false; dn.textContent='Already on the board for '+fmtShort(ex.installDate)+'. Saving updates it.'; }
+    if(ex){ const dn=r.querySelector('.dup-note'); dn.hidden=false; dn.textContent=state.canAnnounce?'Already on the board for '+fmtShort(ex.installDate)+'. Saving updates it.':'Already on the board for '+fmtShort(ex.installDate)+'. Only a manager can change it, so this row will be skipped.'; }
     if(useIds){
       r.querySelector('.credit-name').textContent=creditLabel(d.agentId);
       const pick=r.querySelector('.credit-pick'), inp=pick.querySelector('input'), list=pick.querySelector('.credit-list');
@@ -597,10 +598,11 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     if(bad){ toast('Each row needs an agent and an install date.'); return; }
     const btn=$('#saveBtn'); btn.disabled=true; btn.textContent='Saving…';
     try{
-      const added=[], updated=[];
+      const added=[], updated=[]; let skipped=0;
       for(const d of state.drafts){
         const extra={customer:d.customer||'', address:d.address||'', mon:(d.mon||'').toUpperCase(), window:d.window||'', orderType:d.orderType||'', phone:(d.phone||'').replace(/\D/g,''), vzStatus:d.vzStatus||''};
         const ex=extra.mon&&state.installs.find(i=>i.mon===extra.mon);
+        if(ex&&!state.canAnnounce){ skipped++; continue; }
         if(ex){
           const patch={...extra, saleDate:parseISO(d.saleDate)?d.saleDate:(ex.saleDate||'')};
           if(ex.installDate!==d.installDate){
@@ -615,6 +617,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         }
       }
       closeReview();
+      if(skipped&&!added.length&&!updated.length){ toast(skipped===1?'That order is already on the board. Ask a manager to change it.':skipped+' orders already on the board. Ask a manager to change them.'); return; }
       toast(updated.length&&!added.length?(updated.length===1?'Order updated':updated.length+' orders updated'):(added.length+updated.length===1?'Install saved':(added.length+updated.length)+' installs saved'));
       const line=d=>agentRef(d)+(d.customer?' for '+d.customer:'')+', installing '+weekday(d.installDate)+' '+fmtShort(d.installDate)+(d.window?' ('+d.window+')':'');
       if(added.length) postSystem((added.length===1?'Added an install: ':'Added '+added.length+' installs:\n')+added.map(line).join('\n'));
@@ -1066,7 +1069,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     return {
       collection:t=>query(t),
       doc(path){ const [t,id]=path.split('/'); return {
-        async update(obj){ const {error}=await sb.from(t).update(toRow(t,obj)).eq('id',id); if(error) throw wrapErr(error); },
+        async update(obj){ const {data,error}=await sb.from(t).update(toRow(t,obj)).eq('id',id).select('id'); if(error) throw wrapErr(error); if(!data||!data.length) throw {code:'42501'}; },
         async delete(){ const {data,error}=await sb.from(t).delete().eq('id',id).select('id'); if(error) throw wrapErr(error); if(!data||!data.length) throw {code:'42501'}; }
       }; }
     };
@@ -1079,7 +1082,12 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     return {
       async id(){ return state.meId; },
       async canEdit(){ return (prof()[state.meId]||{}).role==='manager'; },
-      async profiles(ids){ const out={}; [].concat(ids).forEach(id=>{ const p=prof()[id]; if(p) out[id]=toProfile(p); }); return out; },
+      async profiles(ids){
+        ids=[].concat(ids).filter(Boolean);
+        // someone new, or someone who hasn't typed their name yet: fetch them fresh
+        const missing=ids.filter(id=>!prof()[id]||!prof()[id].full_name);
+        if(missing.length&&sb){ try{ const {data}=await sb.from('profiles').select('id,full_name,role').in('id',missing); (data||[]).forEach(p=>{ state.profiles[p.id]=p; }); }catch(_){} }
+        const out={}; ids.forEach(id=>{ const p=prof()[id]; if(p) out[id]=toProfile(p); }); return out; },
       async search(q){ q=(q||'').toLowerCase(); return Object.values(prof()).filter(p=>p.full_name&&p.full_name.toLowerCase().includes(q)).sort((a,b)=>a.full_name.localeCompare(b.full_name)).map(toProfile); }
     };
   }
@@ -1141,6 +1149,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       // keep teammate names fresh as people join
       sb.channel('rt-profiles').on('postgres_changes',{event:'*',schema:'public',table:'profiles'},async()=>{ await loadProfiles(); state.names={}; ensureNames(Object.keys(state.profiles)); if(state.tab==='chat') renderChat(); }).subscribe();
       ensureNames(Object.keys(state.profiles));
+      document.addEventListener('visibilitychange',async()=>{ if(document.visibilityState!=='visible') return; await loadProfiles(); state.names={}; ensureNames([...Object.keys(state.profiles),...state.installs.map(i=>i.agentId)]); });
       state.db.collection('installs').onSnapshot(snap=>{
         state.installs=snap.docs.map(d=>({id:d.id,...d.data()}));
         render(); ensureNames(state.installs.map(i=>i.agentId));

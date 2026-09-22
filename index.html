@@ -471,19 +471,41 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   }
 
   function renderNext(groups){
-    const box=$('#next'); const nxt=[...groups.today,...groups.week,...groups.later].find(i=>i.installDate);
-    const todayCount=groups.today.length;
-    if(!nxt){ box.hidden=true; return; }
-    const n=daysFromToday(nxt.installDate);
-    box.hidden=false; box.innerHTML='';
+    const box=$('#next');
+    // Agents always see their own next install; managers see the whole team (following the filters)
+    const mine=!state.canAnnounce;
+    let today, upcoming;
+    if(mine){
+      const own=state.installs.filter(i=>state.meId&&i.agentId===state.meId&&i.status!=='installed'&&i.status!=='cancelled'&&parseISO(i.installDate)&&daysFromToday(i.installDate)>=0)
+        .sort((a,b)=>a.installDate.localeCompare(b.installDate));
+      today=own.filter(i=>daysFromToday(i.installDate)===0); upcoming=own;
+    } else {
+      today=groups.today; upcoming=[...groups.today,...groups.week,...groups.later].filter(i=>i.installDate);
+    }
+    const nxt=upcoming[0];
+    box.innerHTML='';
+    if(!nxt){
+      if(!mine){ box.hidden=true; return; }
+      box.hidden=false;
+      const txt=document.createElement('div');
+      const p1=document.createElement('p'); p1.className='who'; p1.textContent='No upcoming installs yet';
+      const p2=document.createElement('p'); p2.className='meta'; p2.textContent='Your next install will show here once a sale is on the board.';
+      txt.append(p1,p2); box.append(txt); return;
+    }
+    const n=daysFromToday(nxt.installDate), todayCount=today.length;
+    box.hidden=false;
     const big=document.createElement('div'); big.className='big';
     big.textContent = todayCount ? todayCount : n;
     const sm=document.createElement('small'); sm.textContent = todayCount ? 'today' : (n===1?'day':'days'); big.append(sm);
     const txt=document.createElement('div');
     const p1=document.createElement('p'); p1.className='who';
-    p1.textContent = todayCount ? (todayCount===1?'Install happening today':'Installs happening today') : 'Next install: '+(nxt.customer||agentName(nxt));
+    const label=mine?'Your next install: ':'Next install: ';
+    p1.textContent = todayCount ? (mine?(todayCount===1?'You have an install today':'You have installs today'):(todayCount===1?'Install happening today':'Installs happening today')) : label+(nxt.customer||agentName(nxt));
     const p2=document.createElement('p'); p2.className='meta';
-    p2.textContent = todayCount ? groups.today.map(i=>i.customer||agentName(i)).join(', ') : weekday(nxt.installDate)+', '+fmtShort(nxt.installDate);
+    const win=x=>x.window?' ('+x.window.replace(/:00/g,'').replace(/\s*to\s*/i,'–')+')':'';
+    p2.textContent = todayCount
+      ? today.map(i=>(i.customer||agentName(i))+(mine?win(i):'')).join(', ')
+      : weekday(nxt.installDate)+', '+fmtShort(nxt.installDate)+(mine?win(nxt):'');
     txt.append(p1,p2); box.append(big,txt);
   }
 

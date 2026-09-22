@@ -109,6 +109,24 @@ button{cursor:pointer}
 .ptr.spin svg{animation:ptrspin .8s linear infinite}
 @keyframes ptrspin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.ptr.spin svg{animation:none}}
+.item{cursor:pointer}
+.sheet-wrap{position:fixed;inset:0;z-index:45;background:rgba(8,12,20,.55);display:flex;align-items:flex-end;justify-content:center}
+.sheet-wrap[hidden]{display:none}
+.sheet{background:var(--surface);color:var(--ink);width:100%;max-width:560px;max-height:88vh;overflow-y:auto;border-radius:18px 18px 0 0;padding:18px 20px calc(22px + env(safe-area-inset-bottom,0px));box-shadow:0 -8px 30px rgba(0,0,0,.25)}
+.sheet-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:6px}
+.sheet-head h2{margin:0;font-size:1.3rem;line-height:1.25;flex:1;overflow-wrap:anywhere}
+.sheet-x{border:0;background:var(--line);color:var(--ink);width:34px;height:34px;border-radius:50%;font-size:1.2rem;line-height:1;flex:none;cursor:pointer}
+.sheet-pill{display:inline-block;font-size:.78rem;font-weight:600;padding:3px 9px;border-radius:999px;background:color-mix(in srgb,var(--signal) 16%,transparent);margin-bottom:10px}
+.sheet-pill.done{background:color-mix(in srgb,var(--done) 22%,transparent)}
+.sheet-pill.x{background:rgba(180,35,24,.16)}
+.dl{display:grid;grid-template-columns:auto 1fr;gap:9px 14px;margin:6px 0 0;font-size:.95rem}
+.dl dt{color:var(--muted);white-space:nowrap}
+.dl dd{margin:0;overflow-wrap:anywhere}
+.dl a{color:var(--signal)}
+.sheet h3{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:18px 0 6px}
+.hist{list-style:none;margin:0;padding:0;font-size:.9rem}
+.hist li{padding:6px 0;border-top:1px solid var(--line)}
+.hist li small{display:block;color:var(--muted)}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:500;opacity:0;pointer-events:none;transition:opacity .2s}
 .toast.show{opacity:1}
 .offline{background:var(--today-soft);border:1px solid var(--today);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:.95rem}
@@ -240,6 +258,7 @@ body.on-chat .wrap{padding-bottom:140px}
 </head>
 <body>
 <div id="ptr" class="ptr" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg></div>
+<div id="sheet" class="sheet-wrap" hidden><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"></div></div>
 <div id="gate" class="gate">
   <div class="gate-card">
     <h1>Install Board</h1>
@@ -402,6 +421,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     if(state.showPast && groups.past.length) past.append(groupEl('Closed',groups.past));
 
     renderNext(groups);
+    if(state.detailId) openDetail(state.detailId,true);
     if(state.tab==='calendar') renderCal();
   }
 
@@ -474,6 +494,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       }
       el.append(row);
     }
+    el.onclick=e=>{ if(e.target.closest('button,a,input,label,select')) return; openDetail(i.id); };
     return el;
   }
 
@@ -515,6 +536,50 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       : weekday(nxt.installDate)+', '+fmtShort(nxt.installDate)+(mine?win(nxt):'');
     txt.append(p1,p2); box.append(big,txt);
   }
+
+  // ---------- order detail sheet ----------
+  function fmtLong(s){ const d=parseISO(s); return d? d.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric',year:'numeric'}) : '—'; }
+  function fmtStamp(t){ if(!t) return ''; const d=new Date(t); return isNaN(d)?'':d.toLocaleDateString(undefined,{month:'short',day:'numeric'})+', '+d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}); }
+  function personName(id){ if(!id) return ''; const n=state.names[id]; if(n) return n; const p=(state.profiles||{})[id]; return p&&p.full_name?p.full_name:'Teammate'; }
+  function closeDetail(){ state.detailId=null; $('#sheet').hidden=true; document.body.style.overflow=''; }
+  function openDetail(id,refresh){
+    const i=state.installs.find(x=>x.id===id);
+    if(!i){ if(refresh) closeDetail(); return; }
+    state.detailId=id;
+    const wrap=$('#sheet'), sh=wrap.querySelector('.sheet'); sh.innerHTML='';
+    const head=document.createElement('div'); head.className='sheet-head';
+    const h=document.createElement('h2'); h.id='sheetTitle'; h.textContent=i.customer||agentName(i);
+    const x=document.createElement('button'); x.className='sheet-x'; x.type='button'; x.setAttribute('aria-label','Close'); x.textContent='×'; x.onclick=closeDetail;
+    head.append(h,x); sh.append(head);
+    const st=i.status||'scheduled', n=daysFromToday(i.installDate);
+    const pill=document.createElement('span');
+    pill.className='sheet-pill'+(st==='installed'?' done':st==='cancelled'?' x':'');
+    pill.textContent=st==='installed'?'Installed':st==='cancelled'?'Cancelled':n===0?'Installing today':n===1?'Installing tomorrow':(n!==null&&n<0)?Math.abs(n)+(Math.abs(n)===1?' day':' days')+' overdue':(n!==null?'Installing in '+n+' days':'Scheduled');
+    sh.append(pill);
+    const dl=document.createElement('dl'); dl.className='dl';
+    const row=(label,val)=>{ if(val===''||val==null) return; const dt=document.createElement('dt'); dt.textContent=label; const dd=document.createElement('dd'); if(val instanceof Node) dd.append(val); else dd.textContent=val; dl.append(dt,dd); };
+    row('Order # (MON)', i.mon||'');
+    row('Sales agent', agentName(i));
+    row('Install date', fmtLong(i.installDate));
+    row('Appointment', i.window||'');
+    row('Sale date', i.saleDate?fmtLong(i.saleDate):'');
+    if(i.address){ const a=document.createElement('a'); a.href='https://maps.apple.com/?q='+encodeURIComponent(i.address); a.target='_blank'; a.rel='noopener'; a.textContent=i.address; row('Address',a); }
+    if(i.phone){ const a=document.createElement('a'); a.href='tel:'+i.phone; a.textContent=fmtPhone(i.phone); row('Phone',a); }
+    row('Verizon status', i.vzStatus||'');
+    if(st!=='scheduled'&&i.statusAt) row(st==='installed'?'Marked installed':'Marked cancelled', fmtStamp(i.statusAt)+(i.statusBy?' by '+personName(i.statusBy):''));
+    row('Added', [fmtStamp(i.createdAt), i.createdBy?'by '+personName(i.createdBy):''].filter(Boolean).join(' '));
+    sh.append(dl);
+    const hist=Array.isArray(i.history)?i.history:[];
+    if(hist.length){
+      const t=document.createElement('h3'); t.textContent='Reschedules ('+hist.length+')'; sh.append(t);
+      const ul=document.createElement('ul'); ul.className='hist';
+      hist.slice().reverse().forEach(r=>{ const li=document.createElement('li'); li.textContent=fmtShort(r.from)+' → '+weekday(r.to)+' '+fmtShort(r.to); const sm=document.createElement('small'); sm.textContent=[fmtStamp(r.at), r.by?'by '+personName(r.by):''].filter(Boolean).join(' '); li.append(sm); ul.append(li); });
+      sh.append(ul);
+    }
+    if(!refresh||wrap.hidden){ wrap.hidden=false; document.body.style.overflow='hidden'; sh.scrollTop=0; x.focus({preventScroll:true}); }
+  }
+  $('#sheet').addEventListener('click',e=>{ if(e.target.id==='sheet') closeDetail(); });
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&state.detailId) closeDetail(); });
 
   // ---------- db ----------
   async function setStatus(id,status){
@@ -1206,7 +1271,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   const standalone=window.navigator.standalone===true||window.matchMedia('(display-mode: standalone)').matches;
   if(!standalone) return;
   const ind=document.getElementById('ptr'); const TH=75; let y0=null, dist=0, busy=false;
-  const blocked=t=>t.closest('input,textarea,select,.composer,.suggest,#gate:not([hidden])')||!document.getElementById('review').hidden;
+  const blocked=t=>t.closest('input,textarea,select,.composer,.suggest,#gate:not([hidden]),.sheet-wrap')||!document.getElementById('review').hidden;
   const show=d=>{ const p=Math.min(d/TH,1); ind.style.opacity=p; ind.style.transform='translateY('+(Math.min(d,TH+20)-60)+'px)'; ind.classList.toggle('ready',d>=TH); };
   window.addEventListener('touchstart',e=>{ if(busy||window.scrollY>0||e.touches.length!==1||blocked(e.target)){ y0=null; return; } y0=e.touches[0].clientY; dist=0; },{passive:true});
   window.addEventListener('touchmove',e=>{ if(y0===null) return; const d=(e.touches[0].clientY-y0)*0.5; if(d<=0||window.scrollY>0){ dist=0; show(0); return; } dist=d; if(e.cancelable) e.preventDefault(); show(d); },{passive:false});

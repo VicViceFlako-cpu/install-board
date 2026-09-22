@@ -154,7 +154,7 @@ button{cursor:pointer}
 .tabs.five .tab{font-size:.8rem}
 .lb-controls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
 .seg{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:3px;gap:2px;flex:1 1 auto}
-.seg button{flex:1;border:0;background:none;border-radius:8px;min-height:36px;font:inherit;font-size:.85rem;font-weight:600;color:var(--muted);padding:0 6px;white-space:nowrap}
+.seg button{flex:1;border:0;background:none;border-radius:8px;min-height:36px;font:inherit;font-size:.8rem;font-weight:600;color:var(--muted);padding:0 6px;white-space:nowrap}
 .seg button[aria-pressed="true"]{background:var(--signal);color:#fff}
 .lb-totals{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px}
 .lb-tot{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center}
@@ -451,7 +451,8 @@ body.on-chat .wrap{padding-bottom:140px}
   <div id="viewLeaders" hidden>
     <div class="lb-controls">
       <div class="seg" id="lbPeriod" role="group" aria-label="Time period">
-        <button type="button" data-p="week" aria-pressed="true">This week</button>
+        <button type="button" data-p="today" aria-pressed="true">Today</button>
+        <button type="button" data-p="week" aria-pressed="false">This week</button>
         <button type="button" data-p="month" aria-pressed="false">This month</button>
         <button type="button" data-p="last" aria-pressed="false">Last month</button>
         <button type="button" data-p="all" aria-pressed="false">All time</button>
@@ -1561,9 +1562,10 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   $('#alertBannerX').onclick=()=>{ try{ localStorage.setItem('alertBannerX','1'); }catch(_){} $('#alertBanner').hidden=true; };
 
   // ---------- leaderboard ----------
-  state.lbPeriod='week'; state.lbMetric='sales';
+  state.lbPeriod='today'; state.lbMetric='sales';
   function lbRange(p){
     const t=new Date(); t.setHours(0,0,0,0);
+    if(p==='today') return [iso(t),iso(t)];
     if(p==='week'){ const s=new Date(t); const dow=(s.getDay()+6)%7; s.setDate(s.getDate()-dow); const e=new Date(s); e.setDate(e.getDate()+6); return [iso(s),iso(e)]; }
     if(p==='month'){ const s=new Date(t.getFullYear(),t.getMonth(),1), e=new Date(t.getFullYear(),t.getMonth()+1,0); return [iso(s),iso(e)]; }
     if(p==='last'){ const s=new Date(t.getFullYear(),t.getMonth()-1,1), e=new Date(t.getFullYear(),t.getMonth(),0); return [iso(s),iso(e)]; }
@@ -1588,7 +1590,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const rows=Object.values(by).filter(r=>r.sales||r.installs||r.cancels||r.lines)
       .sort((a,b)=>(b[key]-a[key])||(b[other]-a[other])||agentLabel(a.id).localeCompare(agentLabel(b.id)));
     const list=$('#lbList'); list.innerHTML='';
-    if(!rows.length){ const e=document.createElement('p'); e.className='lb-empty'; e.textContent='No sales or installs in this period yet.'; list.append(e); return; }
+    if(!rows.length){ const e=document.createElement('p'); e.className='lb-empty'; e.textContent=state.lbPeriod==='today'?'Nothing on the board for today yet.':'No sales or installs in this period yet.'; list.append(e); return; }
     const top=Math.max(1,rows[0][key]); let rank=0, prev=null;
     rows.forEach((r,idx)=>{
       if(r[key]!==prev){ rank=idx+1; prev=r[key]; }

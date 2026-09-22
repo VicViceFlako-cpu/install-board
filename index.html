@@ -1,0 +1,1164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Install Board</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Installs">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#172031">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" href="icon.png">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F3F5F8; --surface:#FFFFFF; --ink:#172031; --muted:#5E6878; --line:#DCE1E8;
+  --signal:#0B7A84; --signal-ink:#FFFFFF; --today:#F2B400; --today-soft:#FFF5D6;
+  --done:#2E8B57; --danger:#B42318;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F1520; --surface:#18202D; --ink:#E8ECF2; --muted:#9AA4B3; --line:#2A3444;
+    --signal:#23A6B0; --signal-ink:#06161A; --today:#F2B400; --today-soft:#2E2710;
+    --done:#4CB67C; --danger:#F0786B;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F1520; --surface:#18202D; --ink:#E8ECF2; --muted:#9AA4B3; --line:#2A3444;
+  --signal:#23A6B0; --signal-ink:#06161A; --today:#F2B400; --today-soft:#2E2710;
+  --done:#4CB67C; --danger:#F0786B;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 Barlow,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:720px;margin:0 auto;padding:20px 16px 96px}
+h1{font:700 2.1rem/1 "Barlow Condensed","Arial Narrow",sans-serif;margin:4px 0 2px;letter-spacing:.01em}
+.sub{color:var(--muted);margin:0 0 18px}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--signal);outline-offset:2px}
+
+/* next install strip */
+.next{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:center;background:var(--ink);color:var(--bg);border-radius:14px;padding:16px 18px;margin-bottom:18px}
+.next .big{font:700 3rem/0.9 "Barlow Condensed","Arial Narrow",sans-serif;text-align:center;min-width:64px}
+.next .big small{display:block;font-size:1rem;letter-spacing:.04em;opacity:.8}
+.next p{margin:0}
+.next .who{font-weight:600;font-size:1.1rem}
+.next .meta{opacity:.75;font-size:.95rem}
+
+/* actions */
+.actions{display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:14px}
+.btn{border:0;border-radius:10px;padding:13px 16px;font-weight:600;min-height:48px}
+.btn-primary{background:var(--signal);color:var(--signal-ink)}
+.btn-ghost{background:var(--surface);border:1px solid var(--line)}
+.btn-small{min-height:36px;padding:7px 12px;font-size:.92rem}
+.btn[disabled]{opacity:.55;cursor:default}
+
+.filters{display:flex;gap:10px;margin-bottom:8px}
+.filters select,.filters input{flex:1;min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:44px}
+
+/* review panel */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px}
+.panel h2{font:700 1.3rem/1.1 "Barlow Condensed","Arial Narrow",sans-serif;margin:0 0 4px}
+.panel .hint{color:var(--muted);margin:0 0 12px;font-size:.95rem}
+.shot{max-width:100%;max-height:220px;border-radius:8px;border:1px solid var(--line);display:block;margin-bottom:12px}
+.row-edit{display:grid;grid-template-columns:1fr;gap:8px;padding:12px 0;border-top:1px solid var(--line)}
+.row-edit:first-of-type{border-top:0}
+.row-edit label{display:grid;gap:3px;font-size:.85rem;color:var(--muted)}
+.row-edit input{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;color:var(--ink);font-size:1rem;min-height:42px;width:100%}
+.dates{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.row-tools{display:flex;justify-content:flex-end}
+.linkish{background:none;border:0;color:var(--danger);font-weight:600;padding:6px 0}
+.panel-foot{display:flex;gap:10px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap}
+.status{padding:14px;border-radius:10px;background:var(--bg);color:var(--muted)}
+.error{color:var(--danger)}
+
+/* list */
+.group{margin-top:22px}
+.group h3{font:700 1.15rem/1 "Barlow Condensed","Arial Narrow",sans-serif;margin:0 0 8px;display:flex;justify-content:space-between;align-items:baseline}
+.group h3 span{font:500 .9rem Barlow,sans-serif;color:var(--muted)}
+.item{display:grid;grid-template-columns:62px 1fr auto;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--signal);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.item.is-today{border-left-color:var(--today);background:linear-gradient(90deg,var(--today-soft),var(--surface) 60%)}
+.item.is-done{border-left-color:var(--done);opacity:.72}
+.item.is-late{border-left-color:var(--danger)}
+.day{text-align:center;line-height:1}
+.day b{display:block;font:700 1.75rem/1 "Barlow Condensed","Arial Narrow",sans-serif}
+.day i{font-style:normal;font-size:.8rem;color:var(--muted)}
+.info{min-width:0}
+.info .agent{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.info .meta{color:var(--muted);font-size:.9rem}
+.item-tools{display:flex;gap:6px}
+.icon{width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--bg);display:grid;place-items:center;padding:0}
+.icon svg{width:20px;height:20px}
+.icon.ok{color:var(--done)}
+.icon.del{color:var(--danger)}
+.empty{text-align:center;color:var(--muted);padding:36px 12px;border:2px dashed var(--line);border-radius:14px;margin-top:18px}
+.toggle-past{margin-top:18px}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:500;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.show{opacity:1}
+.offline{background:var(--today-soft);border:1px solid var(--today);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:.95rem}
+
+/* tabs */
+.tabs{display:grid;grid-template-columns:1fr 1fr;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px;margin:0 0 18px;position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
+.tab{border:0;background:none;border-radius:9px;min-height:42px;font-weight:600;color:var(--muted);position:relative}
+.tab[aria-selected="true"]{background:var(--ink);color:var(--bg)}
+.badge{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--today);color:#1B1400;font-size:.75rem;margin-left:6px;vertical-align:1px}
+
+/* chat */
+.chat{display:flex;flex-direction:column;gap:2px;padding-bottom:12px}
+.day-sep{align-self:center;color:var(--muted);font-size:.82rem;margin:14px 0 6px}
+.msg{display:grid;grid-template-columns:34px 1fr;gap:10px;padding:6px 0;max-width:100%}
+.msg.cont{padding-top:0}
+.msg.cont .avatar{visibility:hidden;height:0}
+.avatar{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:.85rem;color:#fff;background:var(--signal);overflow:hidden}
+.avatar img{width:100%;height:100%;object-fit:cover}
+.msg-head{display:flex;gap:8px;align-items:baseline}
+.msg-head b{font-weight:600}
+.msg-head time{color:var(--muted);font-size:.8rem}
+.msg.cont .msg-head{display:none}
+.msg-text{white-space:pre-wrap;overflow-wrap:anywhere}
+.msg-img{margin-top:6px;max-width:min(280px,100%);max-height:320px;border-radius:10px;border:1px solid var(--line);display:block}
+.msg-actions{display:flex;gap:10px;margin-top:4px}
+.msg-actions button{background:none;border:0;padding:4px 0;font-weight:600;font-size:.88rem;color:var(--signal)}
+.msg-actions .del{color:var(--muted)}
+.composer{position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-top:1px solid var(--line);padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));z-index:6}
+.composer-in{max-width:720px;margin:0 auto;display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:end}
+.composer textarea{resize:none;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:11px 12px;min-height:46px;max-height:140px;font:inherit;color:var(--ink);width:100%}
+.composer .icon{width:46px;height:46px}
+.send{background:var(--signal);color:var(--signal-ink);border:0;border-radius:12px;min-height:46px;padding:0 16px;font-weight:600}
+.attach-preview{max-width:720px;margin:0 auto 8px;display:flex;gap:10px;align-items:center;font-size:.9rem;color:var(--muted)}
+.attach-preview img{height:52px;border-radius:8px;border:1px solid var(--line)}
+.attach-preview button{background:none;border:0;color:var(--danger);font-weight:600}
+body.on-chat .wrap{padding-bottom:140px}
+
+.mention{background:color-mix(in srgb,var(--signal) 16%,transparent);color:var(--signal);font-weight:600;border-radius:5px;padding:0 3px}
+.mention.me{background:var(--today);color:#1B1400}
+.msg.hit{background:var(--today-soft);border-radius:10px;margin:0 -8px;padding-left:8px;padding-right:8px}
+.msg.sys .msg-text{border-left:3px solid var(--done);padding:6px 10px;background:var(--surface);border-radius:0 8px 8px 0;font-size:.95rem}
+.msg.ann .msg-text{border:1px solid var(--today);background:var(--today-soft);padding:10px 12px;border-radius:10px}
+.ann-tag{font-size:.78rem;font-weight:700;color:#1B1400;background:var(--today);border-radius:5px;padding:1px 6px}
+.pinned{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:start;background:var(--today-soft);border:1px solid var(--today);border-radius:12px;padding:12px 14px;margin-bottom:16px}
+.pinned svg{width:22px;height:22px;color:var(--today);margin-top:1px}
+.pinned p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.pinned small{display:block;color:var(--muted);margin-top:3px}
+.pinned button{background:none;border:0;color:var(--muted);font-weight:600;padding:2px 0}
+.suggest{max-width:720px;margin:0 auto 8px;background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden;max-height:220px;overflow-y:auto}
+.suggest button{display:flex;gap:10px;align-items:center;width:100%;border:0;background:none;padding:9px 12px;text-align:left;min-height:44px}
+.suggest button:hover,.suggest button.on{background:var(--bg)}
+.suggest .avatar{width:28px;height:28px;font-size:.75rem}
+.composer-in.admin{grid-template-columns:auto auto 1fr auto}
+.ann-toggle{border:1px solid var(--line);background:var(--surface);border-radius:12px;min-height:46px;padding:0 10px;font-weight:600;font-size:.85rem;color:var(--muted)}
+.ann-toggle[aria-pressed="true"]{background:var(--today);border-color:var(--today);color:#1B1400}
+
+.item.has-actions{grid-template-rows:auto auto}
+.item.is-cancel{border-left-color:var(--muted);opacity:.62}
+.item.is-cancel .agent{text-decoration:line-through}
+.status-row{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-top:1px solid var(--line);padding-top:10px;margin-top:2px}
+.status-q{flex-basis:100%;font-size:.88rem;color:var(--muted)}
+.sbtn{flex:1;min-width:92px;min-height:42px;border-radius:9px;font-weight:600;border:1.5px solid var(--line);background:var(--bg);padding:6px 10px}
+.s-ok{border-color:var(--done);color:var(--done)}
+.s-re{border-color:var(--signal);color:var(--signal)}
+.s-x{border-color:var(--danger);color:var(--danger)}
+.resched{display:grid;gap:4px;font-size:.85rem;color:var(--muted);flex:1 1 180px}
+.resched input{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;color:var(--ink);font-size:1rem;min-height:42px;width:100%}
+.item-tools .btn-small{min-height:40px}
+
+.credit{display:grid;gap:4px;font-size:.85rem;color:var(--muted)}
+.credit-line{display:flex;gap:10px;align-items:center;min-height:42px}
+.credit-name{color:var(--ink);font-size:1rem;font-weight:600}
+.credit .linkish{color:var(--signal)}
+.credit-pick input{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;color:var(--ink);font-size:1rem;min-height:42px;width:100%}
+.credit-list{display:grid;margin-top:4px}
+.credit-list button{text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:10px 4px;color:var(--ink);min-height:42px}
+.credit-empty{padding:8px 4px}
+
+.paste-box{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;color:var(--ink);font:inherit;resize:vertical;min-height:120px}
+
+.meta.addr{font-size:.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meta.addr a{color:var(--signal);text-decoration:none}
+.dup-note{margin-right:auto;font-size:.85rem;color:var(--signal);font-weight:600}
+.row-tools{align-items:center;gap:10px}
+
+.tabs{grid-template-columns:1fr 1fr 1fr}
+.cal-head{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;margin-bottom:10px}
+.cal-head h2{margin:0;text-align:center;font:700 1.6rem/1 "Barlow Condensed","Arial Narrow",sans-serif}
+.cal-tools{display:flex;gap:10px;margin-bottom:12px}
+.cal-tools select{flex:1;min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 12px;min-height:36px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal-dow{text-align:center;font-size:.78rem;color:var(--muted);padding:2px 0 4px;font-weight:600}
+.cal-cell{background:var(--surface);border:1px solid var(--line);border-radius:8px;min-height:74px;padding:4px 3px;display:flex;flex-direction:column;gap:2px;text-align:left;overflow:hidden;min-width:0}
+.cal-cell.out{opacity:.4}
+.cal-cell.today{border-color:var(--today);box-shadow:inset 0 0 0 1px var(--today)}
+.cal-cell.sel{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.cal-cell .dn{font-weight:700;font-size:.9rem;line-height:1;padding:2px 2px 3px}
+.chip{font-size:.68rem;line-height:1.25;border-radius:4px;padding:1px 3px;background:color-mix(in srgb,var(--signal) 16%,transparent);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal-cell.sel .chip{background:rgba(255,255,255,.18);color:var(--bg)}
+.chip.done{background:color-mix(in srgb,var(--done) 20%,transparent)}
+.chip.more{background:none;color:var(--muted);padding-left:2px}
+.cal-cell.sel .chip.more{color:var(--bg);opacity:.8}
+.cal-day{margin-top:18px}
+.cal-day h3{font:700 1.25rem/1.1 "Barlow Condensed","Arial Narrow",sans-serif;margin:0 0 8px;display:flex;justify-content:space-between;align-items:baseline}
+.cal-day h3 span{font:500 .9rem Barlow,sans-serif;color:var(--muted)}
+.cal-row{display:grid;grid-template-columns:1fr auto;gap:4px 12px;background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--signal);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.cal-row.done{border-left-color:var(--done)}
+.cal-row .who{font-weight:600}
+.cal-row .mon{font-weight:600;font-variant-numeric:tabular-nums;text-align:right}
+.cal-row .sub{grid-column:1/-1;color:var(--muted);font-size:.9rem}
+@media (max-width:380px){.cal-cell{min-height:64px}.chip{font-size:.62rem}}
+
+.gate{position:fixed;inset:0;background:var(--bg);z-index:50;display:grid;place-items:center;padding:24px 20px calc(24px + env(safe-area-inset-bottom,0px))}
+.gate-card{width:100%;max-width:380px}
+.gate h1{margin-bottom:6px}
+.gate p{color:var(--muted);margin:0 0 18px}
+.gate label{display:grid;gap:5px;font-size:.9rem;color:var(--muted);margin-bottom:12px}
+.gate input{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink);font-size:1.05rem;min-height:48px;width:100%}
+.gate .btn{width:100%}
+.gate .code{letter-spacing:.3em;text-align:center;font-size:1.4rem}
+.gate .back{background:none;border:0;color:var(--signal);font-weight:600;margin-top:12px;padding:6px 0}
+.gate .err{color:var(--danger);font-size:.95rem;min-height:1.4em;margin-top:10px}
+.whoami{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.whoami button{background:none;border:0;color:var(--muted);font-size:.9rem;padding:4px 0}
+[hidden]{display:none!important}
+
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+</head>
+<body>
+<div id="gate" class="gate">
+  <div class="gate-card">
+    <h1>Install Board</h1>
+    <div id="gateSetup" hidden><p>This copy isn't connected to a database yet. Add your Supabase URL and key at the top of the script in index.html.</p></div>
+    <div id="gateEmail" hidden>
+      <p>Sign in with the email and password your manager gave you.</p>
+      <label>Email<input id="gEmail" type="email" autocomplete="username" inputmode="email" autocapitalize="off"></label>
+      <label>Password<input id="gPass" type="password" autocomplete="current-password"></label>
+      <button id="gSend" class="btn btn-primary">Sign in</button>
+    </div>
+    <div id="gateName" hidden>
+      <p>What name should the team see on your installs?</p>
+      <label>Your name<input id="gName" autocomplete="name"></label>
+      <button id="gSaveName" class="btn btn-primary">Continue</button>
+    </div>
+    <div id="gErr" class="err" role="alert"></div>
+  </div>
+</div>
+<div class="wrap">
+  <div class="whoami"><h1>Install Board</h1><button id="signOut" hidden>Sign out</button></div>
+  <p class="sub">Your team's WiFi installs and chat in one place.</p>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tabInstalls" aria-selected="true">Installs</button>
+    <button class="tab" role="tab" id="tabCal" aria-selected="false">Calendar</button>
+    <button class="tab" role="tab" id="tabChat" aria-selected="false">Chat<span id="unread" class="badge" hidden></span></button>
+  </nav>
+
+  <section id="pinned" class="pinned" hidden></section>
+
+  <div id="offline" class="offline" hidden>Can't reach the database right now. Check your connection, then reload.</div>
+
+  <div id="viewInstalls">
+  <section id="next" class="next" hidden aria-live="polite"></section>
+
+  <div class="actions">
+    <button id="uploadBtn" class="btn btn-primary">Paste sale text</button>
+    <button id="manualBtn" class="btn btn-ghost">Add by hand</button>
+  </div>
+
+  <section id="review" class="panel" hidden></section>
+
+  <div class="filters">
+    <select id="agentFilter" aria-label="Filter by sales agent"><option value="">All agents</option></select>
+    <input id="search" type="search" placeholder="Search name, address, order #" aria-label="Search installs">
+  </div>
+
+  <div id="list"></div>
+  <button id="pastBtn" class="btn btn-ghost btn-small toggle-past" hidden></button>
+  <div id="past" hidden></div>
+  </div>
+
+  <div id="viewCal" hidden>
+    <div class="cal-head">
+      <button id="calPrev" class="icon" aria-label="Previous month"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <h2 id="calTitle"></h2>
+      <button id="calNext" class="icon" aria-label="Next month"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
+    </div>
+    <div class="cal-tools">
+      <button id="calToday" class="btn btn-ghost btn-small">Today</button>
+      <select id="calAgent" aria-label="Show installs for"><option value="">All agents</option></select>
+    </div>
+    <div id="calGrid" class="cal-grid" role="grid"></div>
+    <section id="calDay" class="cal-day" aria-live="polite"></section>
+  </div>
+
+  <div id="viewChat" hidden>
+    <div id="chat" class="chat" aria-live="polite"></div>
+  </div>
+</div>
+<div id="composer" class="composer" hidden>
+  <div id="suggest" class="suggest" hidden role="listbox" aria-label="Mention a teammate"></div>
+  <div id="attachPreview" class="attach-preview" hidden></div>
+  <div class="composer-in" id="composerIn">
+    <button id="annBtn" class="ann-toggle" aria-pressed="false" hidden>Announce</button>
+    <button id="photoBtn" class="icon" aria-label="Attach a photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="15" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M21 17l-5-5-9 8"/></svg></button>
+    <textarea id="msgInput" rows="1" placeholder="Message the team" aria-label="Message"></textarea>
+    <button id="sendBtn" class="send">Send</button>
+  </div>
+  <input id="chatFile" type="file" accept="image/*" hidden>
+</div>
+<div id="toast" class="toast" role="status"></div>
+
+<script>
+// ====== SETUP: paste your Supabase project values here (Supabase → Project Settings → API) ======
+const SUPABASE_URL = 'https://pnpumcslzaovmsjplxmq.supabase.co';      // looks like https://abcdxyz.supabase.co
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBucHVtY3NsemFvdm1zanBseG1xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwNDE2NTMsImV4cCI6MjEwNTYxNzY1M30.fp0nTHQPpplaJVKDp8NxnOh8_Iqv2-t8OpfRi_5MxZQ';    // the "anon public" key (safe to put in a web page)
+// ===========================================================================================
+(function(){
+  const $ = s => document.querySelector(s);
+  const state = { installs: [], db: null, sample: null, canImages: false, showPast: false, drafts: null, shotUrl: null, openItem: null, openMode: 'actions', rescheduleDraft: '', names: {}, pendingCredit: '', user: null, meId: null, assets: null, messages: [], tab: 'installs', profiles: {}, calMonth: null, calSel: '', attach: null, announcements: [], canAnnounce: false, announceMode: false, mentionMap: {}, suggestions: [], suggestIdx: 0 };
+  const ICON_OK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  const ICON_UNDO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 010 10h-3"/></svg>';
+  const ICON_DEL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>';
+
+  // ---------- dates ----------
+  function todayISO(){ const d=new Date(); return iso(d); }
+  function iso(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  function parseISO(s){ if(!/^\d{4}-\d{2}-\d{2}$/.test(s||'')) return null; const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }
+  function daysFromToday(s){ const d=parseISO(s); if(!d) return null; const t=parseISO(todayISO()); return Math.round((d-t)/86400000); }
+  function fmtShort(s){ const d=parseISO(s); return d? d.toLocaleDateString(undefined,{month:'short',day:'numeric'}) : '—'; }
+  function weekday(s){ const d=parseISO(s); return d? d.toLocaleDateString(undefined,{weekday:'short'}) : ''; }
+
+  // ---------- toast ----------
+  let tt; function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(tt); tt=setTimeout(()=>t.classList.remove('show'),2400); }
+
+  // ---------- agent names ----------
+  function agentKey(i){ return i.agentId?('id:'+i.agentId):(i.agent?('name:'+i.agent):''); }
+  function agentName(i){ if(i.agentId){ return state.names[i.agentId]||i.agent||'Teammate'; } return i.agent||'Unknown agent'; }
+  function agentRef(i){ return i.agentId?('@{'+i.agentId+'}'):(i.agent||'an agent'); }
+  let nameTok=0;
+  async function ensureNames(ids){
+    ids=[...new Set(ids.filter(Boolean))]; if(!state.user||!ids.length) return;
+    const tok=++nameTok;
+    try{ const ps=await state.user.profiles(ids); if(tok!==nameTok) return;
+      Object.values(ps).forEach(p=>{ if(p&&p.id) state.names[p.id]=p.isMe?(p.name||'You')+' (you)':(p.name||'Teammate'); });
+    }catch(_){ return; }
+    render(); if(state.drafts) refreshCredits();
+  }
+
+  // ---------- render list ----------
+  function render(){
+    const agentSel=$('#agentFilter'), q=$('#search').value.trim().toLowerCase();
+    const seen=new Map(); state.installs.forEach(i=>{ const k=agentKey(i); if(k&&!seen.has(k)) seen.set(k,agentName(i)); });
+    const agents=[...seen.entries()].sort((a,b)=>a[1].localeCompare(b[1]));
+    const cur=agentSel.value;
+    agentSel.innerHTML='<option value="">All agents</option>';
+    if(state.meId){ const o=document.createElement('option'); o.value='id:'+state.meId; o.textContent='My installs'; agentSel.append(o); }
+    agents.forEach(([k,n])=>{ if(k==='id:'+state.meId) return; const o=document.createElement('option'); o.value=k; o.textContent=n; agentSel.append(o); });
+    if([...agentSel.options].some(o=>o.value===cur)) agentSel.value=cur;
+
+    const rows=state.installs.filter(i=>(!agentSel.value||agentKey(i)===agentSel.value)&&(!q||[agentName(i),i.customer,i.address,i.mon,i.phone].join(' ').toLowerCase().includes(q)))
+      .sort((a,b)=>(a.installDate||'9999').localeCompare(b.installDate||'9999'));
+
+    const groups={late:[],today:[],week:[],later:[],past:[]};
+    rows.forEach(r=>{
+      const n=daysFromToday(r.installDate);
+      if(r.status==='installed'||r.status==='cancelled') groups.past.push(r);
+      else if(n===null) groups.later.push(r);
+      else if(n<0) groups.late.push(r);
+      else if(n===0) groups.today.push(r);
+      else if(n<=7) groups.week.push(r);
+      else groups.later.push(r);
+    });
+    groups.past.sort((a,b)=>(b.installDate||'').localeCompare(a.installDate||''));
+
+    const list=$('#list'); list.innerHTML='';
+    const defs=[['late','Overdue, needs a status'],['today','Today'],['week','Next 7 days'],['later','Later']];
+    let shown=0;
+    defs.forEach(([k,label])=>{ if(!groups[k].length) return; shown+=groups[k].length; list.append(groupEl(label,groups[k])); });
+    if(!shown){
+      const e=document.createElement('div'); e.className='empty';
+      e.textContent = state.installs.length ? 'No upcoming installs match this filter.' : 'No installs yet. Tap Paste sale text to add the first one.';
+      list.append(e);
+    }
+    const pb=$('#pastBtn'), past=$('#past');
+    pb.hidden=!groups.past.length;
+    pb.textContent=(state.showPast?'Hide':'Show')+' installed & cancelled ('+groups.past.length+')';
+    past.hidden=!state.showPast; past.innerHTML='';
+    if(state.showPast && groups.past.length) past.append(groupEl('Closed',groups.past));
+
+    renderNext(groups);
+    if(state.tab==='calendar') renderCal();
+  }
+
+  function groupEl(label,items){
+    const g=document.createElement('section'); g.className='group';
+    const h=document.createElement('h3'); h.textContent=label;
+    const c=document.createElement('span'); c.textContent=items.length+(items.length===1?' install':' installs'); h.append(c); g.append(h);
+    items.forEach(i=>g.append(itemEl(i))); return g;
+  }
+
+  function itemEl(i){
+    const n=daysFromToday(i.installDate), st=i.status||'scheduled';
+    const closed=st==='installed'||st==='cancelled', due=!closed&&n!==null&&n<=0;
+    const open=state.openItem===i.id;
+    const el=document.createElement('div');
+    el.className='item'+(st==='installed'?' is-done':st==='cancelled'?' is-cancel':n===0?' is-today':(n!==null&&n<0)?' is-late':'')+(due||open?' has-actions':'');
+    const day=document.createElement('div'); day.className='day';
+    const d=parseISO(i.installDate);
+    day.innerHTML='<b></b><i></i>';
+    day.querySelector('b').textContent=d? d.getDate() : '?';
+    day.querySelector('i').textContent=d? d.toLocaleDateString(undefined,{month:'short'})+' · '+weekday(i.installDate) : 'no date';
+    const info=document.createElement('div'); info.className='info';
+    const a=document.createElement('div'); a.className='agent'; a.textContent=i.customer||agentName(i);
+    const m=document.createElement('div'); m.className='meta';
+    const when=st==='installed'?' · installed':st==='cancelled'?' · cancelled':n===0?' · due today':n===1?' · tomorrow':(n>1?' · in '+n+' days':(n<0?' · '+Math.abs(n)+(Math.abs(n)===1?' day':' days')+' overdue':''));
+    const rs=(i.rescheduleCount||0)>0?' · rescheduled '+i.rescheduleCount+'×':'';
+    m.textContent=(i.customer?agentName(i)+' · ':'')+(i.window?i.window.replace(/:00/g,'').replace(/\s*to\s*/i,'–')+' · ':'')+'Sold '+fmtShort(i.saleDate)+when+rs;
+    info.append(a,m);
+    if(i.address||i.mon||i.phone){
+      const x=document.createElement('div'); x.className='meta addr';
+      if(i.address){ const ad=document.createElement('a'); ad.href='https://maps.apple.com/?q='+encodeURIComponent(i.address); ad.target='_blank'; ad.rel='noopener'; ad.textContent=i.address; x.append(ad); }
+      if(i.phone){ if(x.childNodes.length) x.append(' · '); const ph=document.createElement('a'); ph.href='tel:'+i.phone; ph.textContent=fmtPhone(i.phone); x.append(ph); }
+      if(i.mon){ if(x.childNodes.length) x.append(' · '); x.append(i.mon); }
+      info.append(x);
+    }
+    const tools=document.createElement('div'); tools.className='item-tools';
+    if(closed){
+      const undo=document.createElement('button'); undo.className='icon'; undo.innerHTML=ICON_UNDO;
+      undo.setAttribute('aria-label','Move back to scheduled'); undo.onclick=()=>setStatus(i.id,'scheduled'); tools.append(undo);
+    } else if(!due){
+      const up=document.createElement('button'); up.className='btn btn-ghost btn-small'; up.textContent=open?'Close':'Update';
+      up.setAttribute('aria-expanded',open); up.onclick=()=>{ state.openItem=open?null:i.id; state.openMode='actions'; render(); }; tools.append(up);
+    }
+    const del=document.createElement('button'); del.className='icon del'; del.innerHTML=ICON_DEL; del.setAttribute('aria-label','Delete install');
+    del.onclick=()=>removeInstall(i); tools.append(del);
+    el.append(day,info,tools);
+
+    if(!closed&&(due||open)){
+      const row=document.createElement('div'); row.className='status-row';
+      if(open&&state.openMode==='reschedule'){
+        const lab=document.createElement('label'); lab.className='resched';
+        lab.textContent='New install date';
+        const inp=document.createElement('input'); inp.type='date'; inp.min=todayISO();
+        inp.value=state.rescheduleDraft||''; inp.oninput=()=>{ state.rescheduleDraft=inp.value; };
+        lab.append(inp);
+        const save=document.createElement('button'); save.className='btn btn-primary btn-small'; save.textContent='Save new date';
+        save.onclick=()=>reschedule(i,inp.value);
+        const back=document.createElement('button'); back.className='btn btn-ghost btn-small'; back.textContent='Back';
+        back.onclick=()=>{ state.openMode='actions'; state.openItem=due?null:i.id; render(); };
+        row.append(lab,save,back);
+      } else {
+        const q=document.createElement('span'); q.className='status-q'; q.textContent=due?'How did this install go?':'Update status';
+        const b1=document.createElement('button'); b1.className='sbtn s-ok'; b1.textContent='Installed'; b1.onclick=()=>setStatus(i.id,'installed');
+        const b2=document.createElement('button'); b2.className='sbtn s-re'; b2.textContent='Rescheduled';
+        b2.onclick=()=>{ state.openItem=i.id; state.openMode='reschedule'; state.rescheduleDraft=''; render(); };
+        const b3=document.createElement('button'); b3.className='sbtn s-x'; b3.textContent='Cancelled';
+        b3.onclick=()=>{ if(confirm('Mark the install for '+(i.customer||agentName(i))+' as cancelled?')) setStatus(i.id,'cancelled'); };
+        row.append(q,b1,b2,b3);
+      }
+      el.append(row);
+    }
+    return el;
+  }
+
+  function renderNext(groups){
+    const box=$('#next'); const nxt=[...groups.today,...groups.week,...groups.later].find(i=>i.installDate);
+    const todayCount=groups.today.length;
+    if(!nxt){ box.hidden=true; return; }
+    const n=daysFromToday(nxt.installDate);
+    box.hidden=false; box.innerHTML='';
+    const big=document.createElement('div'); big.className='big';
+    big.textContent = todayCount ? todayCount : n;
+    const sm=document.createElement('small'); sm.textContent = todayCount ? 'today' : (n===1?'day':'days'); big.append(sm);
+    const txt=document.createElement('div');
+    const p1=document.createElement('p'); p1.className='who';
+    p1.textContent = todayCount ? (todayCount===1?'Install happening today':'Installs happening today') : 'Next install: '+(nxt.customer||agentName(nxt));
+    const p2=document.createElement('p'); p2.className='meta';
+    p2.textContent = todayCount ? groups.today.map(i=>i.customer||agentName(i)).join(', ') : weekday(nxt.installDate)+', '+fmtShort(nxt.installDate);
+    txt.append(p1,p2); box.append(big,txt);
+  }
+
+  // ---------- db ----------
+  async function setStatus(id,status){
+    if(!state.db) return;
+    try{
+      const i=state.installs.find(x=>x.id===id);
+      await state.db.doc('installs/'+id).update({status, statusAt:new Date().toISOString(), statusBy:state.meId||''});
+      if(state.openItem===id){ state.openItem=null; }
+      toast(status==='installed'?'Marked installed':status==='cancelled'?'Marked cancelled':'Moved back to scheduled');
+      const who=(i?agentRef(i):'an agent')+'\'s '+(i?fmtShort(i.installDate):'')+' install';
+      if(status==='installed') postSystem('Marked '+who+' as installed.');
+      if(status==='cancelled') postSystem('Marked '+who+' as cancelled.');
+    }
+    catch(e){ toast(writeErr(e)); }
+  }
+  async function reschedule(i,newDate){
+    if(!state.db) return;
+    if(!parseISO(newDate)){ toast('Pick the new install date first.'); return; }
+    if(newDate===i.installDate){ toast('That\'s the same date. Pick a different one.'); return; }
+    const hist=Array.isArray(i.history)?i.history.slice(-19):[];
+    hist.push({from:i.installDate||'', to:newDate, at:new Date().toISOString(), by:state.meId||''});
+    try{
+      await state.db.doc('installs/'+i.id).update({installDate:newDate, status:'scheduled', rescheduleCount:(i.rescheduleCount||0)+1, history:hist});
+      state.openItem=null; state.openMode='actions'; state.rescheduleDraft='';
+      toast('Moved to '+weekday(newDate)+' '+fmtShort(newDate));
+      postSystem('Rescheduled '+agentRef(i)+'\'s install from '+fmtShort(i.installDate)+' to '+weekday(newDate)+' '+fmtShort(newDate)+'.');
+    }catch(e){ toast(writeErr(e)); }
+  }
+  async function removeInstall(i){
+    if(!state.db) return;
+    if(!confirm('Delete the install for '+(i.customer||agentName(i))+' on '+fmtShort(i.installDate)+'?')) return;
+    try{ await state.db.doc('installs/'+i.id).delete(); toast('Install deleted'); }
+    catch(e){ toast(writeErr(e)); }
+  }
+  function writeErr(e){ return e&&(e.code==='42501'||e.code==='not_granted') ? 'You don\'t have permission to do that.' : 'Couldn\'t save. Check your connection and try again.'; }
+
+  // ---------- review panel ----------
+  function openReview(drafts, opts={}){
+    state.drafts=drafts; const p=$('#review'); p.hidden=false; p.innerHTML='';
+    const h=document.createElement('h2'); h.textContent=opts.title||'Check the details';
+    const hint=document.createElement('p'); hint.className='hint';
+    hint.textContent=opts.hint||'Fix anything that was read wrong, then save.';
+    p.append(h,hint);
+    if(state.shotUrl && opts.showShot){ const img=document.createElement('img'); img.className='shot'; img.src=state.shotUrl; img.alt='Sale photo'; p.append(img); }
+    const rows=document.createElement('div'); p.append(rows);
+    drafts.forEach((d,idx)=>rows.append(draftRow(d,idx)));
+    const foot=document.createElement('div'); foot.className='panel-foot';
+    const add=document.createElement('button'); add.className='btn btn-ghost btn-small'; add.textContent='Add another row';
+    add.onclick=()=>{ syncDrafts(); state.drafts.push({agentId:(state.drafts[state.drafts.length-1]||{}).agentId||state.meId||'',agent:'',saleDate:todayISO(),installDate:''}); openReview(state.drafts,{...opts}); };
+    const cancel=document.createElement('button'); cancel.className='btn btn-ghost btn-small'; cancel.textContent='Cancel'; cancel.onclick=closeReview;
+    const save=document.createElement('button'); save.className='btn btn-primary btn-small'; save.id='saveBtn';
+    save.textContent=drafts.length>1?'Save '+drafts.length+' installs':'Save install'; save.onclick=saveDrafts;
+    save.disabled=!state.db;
+    foot.append(add,cancel,save); p.append(foot);
+    p.scrollIntoView({behavior:'smooth',block:'start'});
+  }
+  function draftRow(d,idx){
+    const r=document.createElement('div'); r.className='row-edit'; r.dataset.idx=idx;
+    const useIds=!!(state.user&&state.meId);
+    const who=useIds
+      ? '<div class="credit"><span class="credit-lab">Credited to</span><div class="credit-line"><b class="credit-name"></b><button type="button" class="linkish credit-change">Change</button></div><div class="credit-pick" hidden><input type="search" placeholder="Search teammates" aria-label="Search teammates"><div class="credit-list"></div></div></div>'
+      : '<label>Sales agent<input data-f="agent" autocomplete="off"></label>';
+    r.innerHTML=who+'<label>Customer<input data-f="customer" autocomplete="off"></label><div class="dates"><label>Sale date<input type="date" data-f="saleDate"></label><label>Install date<input type="date" data-f="installDate"></label></div>'
+      +'<div class="dates"><label>Appointment window<input data-f="window" placeholder="8:00 AM to 12:00 PM"></label><label>Order # (MON)<input data-f="mon" autocomplete="off"></label></div>'
+      +'<label>Service address<input data-f="address" autocomplete="off"></label><label>Customer phone<input data-f="phone" inputmode="tel"></label>'
+      +'<div class="row-tools"><span class="dup-note" hidden></span><button class="linkish rm" type="button">Remove</button></div>';
+    ['customer','window','mon','address'].forEach(f=>{ r.querySelector('[data-f='+f+']').value=d[f]||''; });
+    r.querySelector('[data-f=phone]').value=fmtPhone(d.phone);
+    const ex=d.mon&&state.installs.find(i=>i.mon&&i.mon===d.mon);
+    if(ex){ const dn=r.querySelector('.dup-note'); dn.hidden=false; dn.textContent='Already on the board for '+fmtShort(ex.installDate)+'. Saving updates it.'; }
+    if(useIds){
+      r.querySelector('.credit-name').textContent=creditLabel(d.agentId);
+      const pick=r.querySelector('.credit-pick'), inp=pick.querySelector('input'), list=pick.querySelector('.credit-list');
+      r.querySelector('.credit-change').onclick=()=>{ pick.hidden=!pick.hidden; if(!pick.hidden){ inp.value=''; searchCredit('',list,d,r); } };
+      inp.oninput=()=>searchCredit(inp.value,list,d,r);
+    } else r.querySelector('[data-f=agent]').value=d.agent||'';
+    r.querySelector('[data-f=saleDate]').value=d.saleDate||'';
+    r.querySelector('[data-f=installDate]').value=d.installDate||'';
+    r.querySelector('.rm').onclick=()=>{ syncDrafts(); state.drafts.splice(idx,1); if(!state.drafts.length) closeReview(); else openReview(state.drafts,{title:$('#review h2').textContent,hint:$('#review .hint').textContent,showShot:!!$('#review .shot')}); };
+    return r;
+  }
+  function creditLabel(id){ if(!id) return 'Nobody yet'; return state.names[id]||(id===state.meId?'You':'Teammate'); }
+  function refreshCredits(){ document.querySelectorAll('#review .row-edit').forEach(r=>{ const d=state.drafts&&state.drafts[+r.dataset.idx]; const el=r.querySelector('.credit-name'); if(d&&el) el.textContent=creditLabel(d.agentId); }); }
+  let creditTok=0;
+  async function searchCredit(q,list,d,r){
+    const tok=++creditTok; let res=[];
+    try{ res=await state.user.search(q); }catch(_){}
+    if(tok!==creditTok) return;
+    list.innerHTML='';
+    (res||[]).filter(p=>p.name).slice(0,6).forEach(p=>{
+      const b=document.createElement('button'); b.type='button'; b.textContent=p.isMe?p.name+' (you)':p.name;
+      b.onclick=()=>{ d.agentId=p.id; state.names[p.id]=p.isMe?p.name+' (you)':p.name; r.querySelector('.credit-name').textContent=creditLabel(p.id); r.querySelector('.credit-pick').hidden=true; };
+      list.append(b);
+    });
+    if(!list.children.length){ const e=document.createElement('div'); e.className='credit-empty'; e.textContent='No teammates match.'; list.append(e); }
+  }
+  function syncDrafts(){
+    document.querySelectorAll('#review .row-edit').forEach(r=>{
+      const d=state.drafts[+r.dataset.idx]; if(!d) return;
+      r.querySelectorAll('input[data-f]').forEach(inp=>d[inp.dataset.f]=inp.value.trim());
+    });
+  }
+  function closeReview(){ const p=$('#review'); p.hidden=true; p.innerHTML=''; state.drafts=null; clearShot(); }
+  function clearShot(){ if(state.shotUrl&&state.shotUrl.startsWith('blob:')) URL.revokeObjectURL(state.shotUrl); state.shotUrl=null; }
+  const photoCache={};
+  function photoUrl(path){ if(!photoCache[path]) photoCache[path]=sb.storage.from('chat-photos').createSignedUrl(path,60*60*12).then(r=>r.data?r.data.signedUrl:'').catch(()=>''); return photoCache[path]; }
+  function setPhoto(im,path){ photoUrl(path).then(u=>{ if(u) im.src=u; }); }
+  async function saveDrafts(){
+    syncDrafts();
+    const bad=state.drafts.find(d=>(!d.agentId&&!d.agent)||!parseISO(d.installDate));
+    if(bad){ toast('Each row needs an agent and an install date.'); return; }
+    const btn=$('#saveBtn'); btn.disabled=true; btn.textContent='Saving…';
+    try{
+      const added=[], updated=[];
+      for(const d of state.drafts){
+        const extra={customer:d.customer||'', address:d.address||'', mon:(d.mon||'').toUpperCase(), window:d.window||'', orderType:d.orderType||'', phone:(d.phone||'').replace(/\D/g,''), vzStatus:d.vzStatus||''};
+        const ex=extra.mon&&state.installs.find(i=>i.mon===extra.mon);
+        if(ex){
+          const patch={...extra, saleDate:parseISO(d.saleDate)?d.saleDate:(ex.saleDate||'')};
+          if(ex.installDate!==d.installDate){
+            const hist=Array.isArray(ex.history)?ex.history.slice(-19):[];
+            hist.push({from:ex.installDate||'',to:d.installDate,at:new Date().toISOString(),by:state.meId||''});
+            Object.assign(patch,{installDate:d.installDate,status:'scheduled',rescheduleCount:(ex.rescheduleCount||0)+1,history:hist});
+          }
+          await state.db.doc('installs/'+ex.id).update(patch); updated.push({...ex,...patch,prev:ex.installDate});
+        } else {
+          const doc={agentId:d.agentId||'', agent:d.agentId?'':(d.agent||''), saleDate:parseISO(d.saleDate)?d.saleDate:'', installDate:d.installDate, status:'scheduled', createdBy:state.meId||'', createdAt:new Date().toISOString(), ...extra};
+          await state.db.collection('installs').add(doc); added.push(doc);
+        }
+      }
+      closeReview();
+      toast(updated.length&&!added.length?(updated.length===1?'Order updated':updated.length+' orders updated'):(added.length+updated.length===1?'Install saved':(added.length+updated.length)+' installs saved'));
+      const line=d=>agentRef(d)+(d.customer?' for '+d.customer:'')+', installing '+weekday(d.installDate)+' '+fmtShort(d.installDate)+(d.window?' ('+d.window+')':'');
+      if(added.length) postSystem((added.length===1?'Added an install: ':'Added '+added.length+' installs:\n')+added.map(line).join('\n'));
+      updated.filter(u=>u.prev!==u.installDate).forEach(u=>postSystem('Rescheduled '+agentRef(u)+(u.customer?'\'s install for '+u.customer:'\'s install')+' from '+fmtShort(u.prev)+' to '+weekday(u.installDate)+' '+fmtShort(u.installDate)+'.'));
+    }catch(e){ btn.disabled=false; btn.textContent='Try saving again'; toast(writeErr(e)); }
+  }
+
+  // ---------- Verizon order confirmation parser ----------
+  // Pasted text from the Optix order summary comes out in column order: two labels, then two values
+  // (e.g. "Order Date / Due Date / 9/18/2026 / 10/3/2026"), so values are matched by pattern, not position.
+  const VZ_LABELS=['contact summary:','incorrect account','order summary','verizon order confirmation','account name','billing telephone number','mobile telephone number','alternate telephone number','service address','mon','order type','order date','due date','appointment time','status','soc','<','>','+','-'];
+  function isLabel(l){ const x=l.toLowerCase().replace(/\s*>\s*$/,'').trim(); return VZ_LABELS.includes(x)||VZ_LABELS.includes(l.toLowerCase()); }
+  function mdyToISO(t){ const m=/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec(t.trim()); if(!m) return ''; let y=+m[3]; if(y<100) y+=2000; const d=iso(new Date(y,+m[1]-1,+m[2])); return parseISO(d)?d:''; }
+  function parseVerizon(text){
+    const lines=text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+    const low=lines.map(l=>l.toLowerCase());
+    const idx=lab=>low.findIndex(l=>l===lab);
+    const after=(lab,test)=>{ const i=idx(lab); if(i<0) return ''; for(let k=i+1;k<lines.length;k++){ if(isLabel(lines[k])) continue; if(!test||test(lines[k])) return lines[k]; } return ''; };
+    const out={};
+    const iOrder=idx('order date');
+    const dates=lines.slice(iOrder>=0?iOrder:0).filter(l=>/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(l)).map(mdyToISO).filter(Boolean);
+    if(iOrder>=0&&idx('due date')>=0){ out.saleDate=dates[0]||''; out.installDate=dates[1]||''; }
+    else if(idx('due date')>=0){ out.installDate=dates[0]||''; }
+    const iAcc=idx('account name');
+    if(iAcc>=0){ const n=lines[iAcc+1]; if(n&&!isLabel(n)&&!/\d{5,}/.test(n)) out.customer=n; }
+    const iAd=idx('service address'); const adl=iAd>=0?lines[iAd+1]:''; out.address=(adl&&!isLabel(adl)&&/[a-z]/i.test(adl)&&/\d/.test(adl)&&!/^[A-Z]{2}\d{8,14}$/.test(adl))?adl:'';
+    const mon=text.match(/\b[A-Z]{2}\d{8,14}\b/); out.mon=mon?mon[0]:'';
+    const ot=lines.find(l=>/^(new install|move|change|upgrade|transfer|reconnect|add|modify)\b/i.test(l)&&!isLabel(l)); out.orderType=ot||'';
+    const ap=text.match(/\d{1,2}:\d{2}\s*[AP]M\s*(?:to|-|–)\s*\d{1,2}:\d{2}\s*[AP]M/i); out.window=ap?ap[0].replace(/\s+/g,' '):'';
+    const st=lines.find(l=>/^(confirmed|pending|scheduled|completed|cancell?ed|held|in progress)$/i.test(l)); out.vzStatus=st||'';
+    const iMob=idx('mobile telephone number');
+    if(iMob>=0){ for(let k=iMob+1;k<lines.length;k++){ const dg=lines[k].replace(/\D/g,''); if(isLabel(lines[k])) continue; if(dg.length===10&&/^[\d\s().-]+$/.test(lines[k])){ out.phone=dg; break; } if(/[a-z]/i.test(lines[k])) break; } }
+    return out;
+  }
+  function fmtPhone(d){ d=(d||'').replace(/\D/g,''); return d.length===10?'('+d.slice(0,3)+') '+d.slice(3,6)+'-'+d.slice(6):d; }
+
+  // ---------- reading pasted sale text ----------
+  function readingStatus(msg,isErr){
+    const p=$('#review'); p.hidden=false; p.innerHTML='';
+    const h=document.createElement('h2'); h.textContent=isErr?'Couldn\'t read that text':'Reading sale text';
+    const s=document.createElement('div'); s.className='status'+(isErr?' error':''); s.textContent=msg;
+    p.append(h);
+    if(state.shotUrl){ const img=document.createElement('img'); img.className='shot'; img.src=state.shotUrl; img.alt='Sale photo'; p.append(img); }
+    p.append(s);
+    if(isErr){
+      const foot=document.createElement('div'); foot.className='panel-foot';
+      const man=document.createElement('button'); man.className='btn btn-primary btn-small'; man.textContent='Enter it by hand';
+      man.onclick=()=>openReview([{agentId:state.pendingCredit||state.meId||'',agent:'',saleDate:todayISO(),installDate:''}],{title:'Add install',hint:'Enter the dates, then save.',showShot:true});
+      const c=document.createElement('button'); c.className='btn btn-ghost btn-small'; c.textContent='Cancel'; c.onclick=closeReview;
+      foot.append(c);
+      { const pt=document.createElement('button'); pt.className='btn btn-ghost btn-small'; pt.textContent='Try pasting again'; pt.onclick=openPaste; foot.append(pt); }
+      foot.append(man); p.append(foot);
+    }
+  }
+  // The only way sales come in: paste the order text (copied from an app, a message, or a photo with Live Text).
+  function openPaste(){
+    const p=$('#review'); p.hidden=false; p.innerHTML='';
+    const h=document.createElement('h2'); h.textContent='Paste the sale text';
+    const hint=document.createElement('p'); hint.className='hint';
+    hint.textContent=state.shotUrl?'Press and hold on the text in the photo, tap Select All, then Copy. Paste it below.':'Copy the order confirmation text and paste it below. From a screenshot on iPhone: open it in Photos, press and hold on the text, tap Select All, then Copy.';
+    p.append(h,hint);
+    if(state.shotUrl){ const img=document.createElement('img'); img.className='shot'; img.src=state.shotUrl; img.alt='Sale photo'; p.append(img); }
+    const ta=document.createElement('textarea'); ta.className='paste-box'; ta.rows=6; ta.placeholder='Paste the order text here'; ta.setAttribute('aria-label','Sale text');
+    p.append(ta);
+    const foot=document.createElement('div'); foot.className='panel-foot';
+    const c=document.createElement('button'); c.className='btn btn-ghost btn-small'; c.textContent='Cancel'; c.onclick=closeReview;
+    const go=document.createElement('button'); go.className='btn btn-primary btn-small'; go.textContent='Read text';
+    go.onclick=()=>{ const t=ta.value.trim(); if(!t){ toast('Paste the text first.'); return; } readSales(null,t.slice(0,8000)); };
+    foot.append(c,go); p.append(foot);
+    p.scrollIntoView({behavior:'smooth',block:'start'});
+  }
+  // Wait for the reader instead of failing if the page just opened, and say exactly what's missing.
+  async function ensureReader(){
+    return 'Couldn\'t find the order date and due date in that text. Copy the whole Order Summary and paste again, or enter the install by hand.';
+  }
+  // Re-encode any photo (including iPhone HEIC) as a JPEG the reader accepts.
+  function toJpeg(file){
+    return new Promise((resolve,reject)=>{
+      const url=URL.createObjectURL(file); const im=new Image();
+      im.onload=()=>{
+        const max=2000, sc=Math.min(1,max/Math.max(im.naturalWidth,im.naturalHeight));
+        const c=document.createElement('canvas'); c.width=Math.round(im.naturalWidth*sc); c.height=Math.round(im.naturalHeight*sc);
+        c.getContext('2d').drawImage(im,0,0,c.width,c.height); URL.revokeObjectURL(url);
+        c.toBlob(b=>b?resolve(b):reject(new Error('encode')),'image/jpeg',0.9);
+      };
+      im.onerror=()=>{ URL.revokeObjectURL(url); reject(new Error('decode')); };
+      im.src=url;
+    });
+  }
+  function sampleErr(code){
+    switch(code){
+      case 'not_granted': return 'Claude wasn\'t allowed to read text on this page. Reload the page, paste again, and tap Allow when asked.';
+      case 'sampling_disabled': return 'Claude features are turned off for this account, so sale text can\'t be read. You can still add installs by hand.';
+      case 'images_unavailable': return 'This app or browser can\'t send photos to Claude yet. Update the Claude app, or open the link at claude.ai in Safari or Chrome.';
+      case 'rate_limited': return 'Too many reads at once. Wait a minute, then try again.';
+      case 'image_rejected': return 'That file couldn\'t be opened. Try a PNG or JPG screenshot.';
+      case 'invalid_json': case 'empty_completion': return 'No sale dates were found. Make sure the text includes the sale and install dates.';
+      default: return 'Something interrupted the read. Try again.';
+    }
+  }
+  async function readSales(img,text){
+    if(text){
+      const v=parseVerizon(text);
+      if(v.installDate){
+        ensureNames([state.pendingCredit]);
+        openReview([{agentId:state.pendingCredit,agent:'',...v}],{title:'Sale found',hint:'Check the details and fix anything that looks off, then save.',showShot:true});
+        return;
+      }
+    }
+    const why=await ensureReader(); if(why){ readingStatus(why,true); return; }
+    readingStatus(img?'Looking for the sale date and install date. This usually takes 10–30 seconds.':'Reading the text. This usually takes 10–30 seconds.');
+    $('#uploadBtn').disabled=true;
+    const t=todayISO();
+    const src=img?'The attached image is a screenshot':'The text below was copied from a sales order';
+    const prompt=src+' from a WiFi / home internet sales order system, a text message, or a sales report. '
+      +'It is usually a Verizon Fios order confirmation, where "Order Date" is the sale date and "Due Date" is the install date. Labels and values may be out of order because two columns were copied together. '
+      +'Find every sale shown and extract, for each one: the sale date (order date), the install date (due date / appointment date), the customer (account name), the service address, the order number (MON, like NY12342722370), the appointment time window, and the order type. '
+      +'Today is '+t+'. If a date has no year, pick the year that makes it closest to today (install dates are usually in the future, sale dates in the past). '
+      +'Convert every date to YYYY-MM-DD. If a date is not visible, use an empty string. '
+      +'Reply with only JSON in this shape: {"sales":[{"saleDate":"2026-09-18","installDate":"2026-09-24","customer":"","address":"","mon":"","window":"8:00 AM to 12:00 PM","orderType":"New Install"}]}. If no sale is visible, reply {"sales":[]}.'
+      +(text?'\n\nCopied text:\n'+text:'');
+    try{
+      const res=await state.sample.json(prompt,img?{images:img,cache:false}:{cache:false});
+      const sales=(res&&Array.isArray(res.sales)?res.sales:Array.isArray(res)?res:[]).map(x=>({
+        agentId:state.pendingCredit, agent:'',
+        saleDate:parseISO(String(x.saleDate||''))?String(x.saleDate):'',
+        installDate:parseISO(String(x.installDate||''))?String(x.installDate):'',
+        customer:String(x.customer||'').slice(0,80), address:String(x.address||'').slice(0,160), mon:String(x.mon||'').slice(0,30),
+        window:String(x.window||'').slice(0,40), orderType:String(x.orderType||'').slice(0,40)
+      }));
+      if(!sales.length){ readingStatus(img?'No sale details were found in that screenshot.':'No sale dates were found in that text.',true); return; }
+      ensureNames([state.pendingCredit]);
+      openReview(sales,{title:sales.length>1?sales.length+' sales found':'Sale found',hint:'Check the dates and fix anything that looks off, then save.',showShot:true});
+    }catch(e){
+      if(e&&e.code==='cancelled'){ closeReview(); return; }
+      if(img&&e&&(e.code==='images_unavailable'||e.code==='capability_removed')){ state.canImages=false; openPaste(); toast('Photo reading isn\'t available on this account yet. Paste the text instead.'); return; }
+      readingStatus(sampleErr(e&&e.code),true);
+    }finally{ $('#uploadBtn').disabled=false; }
+  }
+
+
+  // ---------- tabs ----------
+  function lastSeen(){ try{ return localStorage.getItem('chatSeen')||''; }catch(_){ return ''; } }
+  function markSeen(){ const it=streamItems(); const m=it[it.length-1]; if(!m) return; try{ localStorage.setItem('chatSeen',m.createdAt||''); }catch(_){} updateBadge(); }
+  function updateBadge(){
+    const seen=lastSeen(); const fresh=state.tab==='chat'?[]:streamItems().filter(m=>(m.createdAt||'')>seen && m.authorId!==state.meId);
+    const n=fresh.length, hit=fresh.some(m=>Array.isArray(m.mentions)&&state.meId&&m.mentions.includes(state.meId));
+    const b=$('#unread'); b.hidden=!n; b.textContent=(hit?'@ ':'')+(n>99?'99+':n);
+  }
+  function showTab(t){
+    state.tab=t;
+    $('#tabInstalls').setAttribute('aria-selected',t==='installs'); $('#tabChat').setAttribute('aria-selected',t==='chat'); $('#tabCal').setAttribute('aria-selected',t==='calendar');
+    $('#viewInstalls').hidden=t!=='installs'; $('#viewChat').hidden=t!=='chat'; $('#viewCal').hidden=t!=='calendar';
+    if(t==='calendar') renderCal();
+    $('#composer').hidden=t!=='chat'; document.body.classList.toggle('on-chat',t==='chat');
+    if(t==='chat'){ renderChat(); markSeen(); requestAnimationFrame(()=>window.scrollTo(0,document.body.scrollHeight)); }
+    else updateBadge();
+  }
+  $('#tabInstalls').onclick=()=>showTab('installs');
+  $('#tabChat').onclick=()=>showTab('chat');
+  $('#tabCal').onclick=()=>showTab('calendar');
+
+  // ---------- calendar ----------
+  function calInstalls(){
+    const ag=$('#calAgent').value;
+    return state.installs.filter(i=>i.status!=='cancelled'&&parseISO(i.installDate)&&(!ag||agentKey(i)===ag));
+  }
+  function shortName(n){ const p=(n||'').replace(/\s*\(you\)$/,'').split(/\s+/).filter(Boolean); return p.length>1?p[0]+' '+p[p.length-1][0]+'.':(p[0]||'?'); }
+  function renderCal(){
+    if(state.tab!=='calendar') return;
+    const now=parseISO(todayISO());
+    if(!state.calMonth) state.calMonth=new Date(now.getFullYear(),now.getMonth(),1);
+    if(!state.calSel) state.calSel=todayISO();
+    // agent picker mirrors the installs filter options
+    const sel=$('#calAgent'), cur=sel.value; sel.innerHTML=$('#agentFilter').innerHTML; if([...sel.options].some(o=>o.value===cur)) sel.value=cur;
+    const m=state.calMonth; $('#calTitle').textContent=m.toLocaleDateString(undefined,{month:'long',year:'numeric'});
+    const byDay={}; calInstalls().forEach(i=>{ (byDay[i.installDate]=byDay[i.installDate]||[]).push(i); });
+    Object.values(byDay).forEach(a=>a.sort((x,y)=>(x.window||'').localeCompare(y.window||'')));
+    const g=$('#calGrid'); g.innerHTML='';
+    const dows=[]; for(let k=0;k<7;k++){ dows.push(new Date(2026,0,4+k).toLocaleDateString(undefined,{weekday:'narrow'})); }
+    dows.forEach(d=>{ const e=document.createElement('div'); e.className='cal-dow'; e.textContent=d; g.append(e); });
+    const start=new Date(m.getFullYear(),m.getMonth(),1-m.getDay());
+    const weeks=Math.ceil((m.getDay()+new Date(m.getFullYear(),m.getMonth()+1,0).getDate())/7);
+    for(let k=0;k<weeks*7;k++){
+      const d=new Date(start.getFullYear(),start.getMonth(),start.getDate()+k), key=iso(d), list=byDay[key]||[];
+      const c=document.createElement('button'); c.type='button'; c.setAttribute('role','gridcell');
+      c.className='cal-cell'+(d.getMonth()!==m.getMonth()?' out':'')+(key===todayISO()?' today':'')+(key===state.calSel?' sel':'');
+      c.setAttribute('aria-label',d.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})+', '+(list.length?list.length+(list.length===1?' install':' installs'):'no installs'));
+      const dn=document.createElement('span'); dn.className='dn'; dn.textContent=d.getDate(); c.append(dn);
+      list.slice(0,2).forEach(i=>{ const ch=document.createElement('span'); ch.className='chip'+(i.status==='installed'?' done':''); ch.textContent=shortName(agentName(i)); c.append(ch); });
+      if(list.length>2){ const mo=document.createElement('span'); mo.className='chip more'; mo.textContent='+'+(list.length-2)+' more'; c.append(mo); }
+      c.onclick=()=>{ state.calSel=key; if(d.getMonth()!==m.getMonth()) state.calMonth=new Date(d.getFullYear(),d.getMonth(),1); renderCal(); };
+      g.append(c);
+    }
+    renderCalDay(byDay[state.calSel]||[]);
+  }
+  function renderCalDay(list){
+    const box=$('#calDay'); box.innerHTML='';
+    const h=document.createElement('h3'); const d=parseISO(state.calSel);
+    h.textContent=d.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'});
+    const c=document.createElement('span'); c.textContent=list.length?list.length+(list.length===1?' install':' installs'):''; h.append(c); box.append(h);
+    if(!list.length){ const e=document.createElement('div'); e.className='empty'; e.style.marginTop='0'; e.textContent='No installs on this day.'; box.append(e); return; }
+    list.forEach(i=>{
+      const r=document.createElement('div'); r.className='cal-row'+(i.status==='installed'?' done':'');
+      const w=document.createElement('div'); w.className='who'; w.textContent=agentName(i);
+      const mo=document.createElement('div'); mo.className='mon'; mo.textContent=i.mon||'No order #';
+      const sub=document.createElement('div'); sub.className='sub';
+      sub.textContent=[i.customer,i.window,i.status==='installed'?'Installed':(i.rescheduleCount?'Rescheduled '+i.rescheduleCount+'×':'')].filter(Boolean).join(' · ');
+      r.append(w,mo); if(sub.textContent) r.append(sub); box.append(r);
+    });
+  }
+  $('#calPrev').onclick=()=>{ const m=state.calMonth; state.calMonth=new Date(m.getFullYear(),m.getMonth()-1,1); renderCal(); };
+  $('#calNext').onclick=()=>{ const m=state.calMonth; state.calMonth=new Date(m.getFullYear(),m.getMonth()+1,1); renderCal(); };
+  $('#calToday').onclick=()=>{ const n=parseISO(todayISO()); state.calMonth=new Date(n.getFullYear(),n.getMonth(),1); state.calSel=todayISO(); renderCal(); };
+  $('#calAgent').onchange=renderCal;
+
+  // ---------- chat ----------
+  function initials(n){ return (n||'?').split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join('')||'?'; }
+  function timeOf(s){ const d=new Date(s); return isNaN(d)?'':d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}); }
+  function dayLabel(s){ const d=new Date(s); if(isNaN(d)) return ''; const k=iso(d); const n=daysFromToday(k); return n===0?'Today':n===-1?'Yesterday':d.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}); }
+  let chatRenderToken=0;
+  async function renderChat(){
+    if(state.tab!=='chat') return;
+    const token=++chatRenderToken;
+    const all=streamItems();
+    const ids=[...new Set(all.flatMap(m=>[m.authorId,...(m.mentions||[])]).filter(Boolean))];
+    let ps={}; if(state.user&&ids.length){ try{ ps=await state.user.profiles(ids); }catch(_){} }
+    if(token!==chatRenderToken) return;
+    const nearBottom=window.innerHeight+window.scrollY>=document.body.scrollHeight-160;
+    const box=$('#chat'); box.innerHTML='';
+    if(!all.length){
+      const e=document.createElement('div'); e.className='empty';
+      e.textContent=state.db?'No messages yet. Say hi to the team, or paste a sale to share it.':'Chat isn\'t connected in this view.';
+      box.append(e); return;
+    }
+    let prevDay='', prev=null;
+    all.forEach(m=>{
+      const dl=dayLabel(m.createdAt);
+      if(dl!==prevDay){ const sep=document.createElement('div'); sep.className='day-sep'; sep.textContent=dl; box.append(sep); prevDay=dl; prev=null; }
+      const p=ps[m.authorId]||{}; const name=p.name||'Someone';
+      const cont=prev&&prev.authorId===m.authorId&&(new Date(m.createdAt)-new Date(prev.createdAt))<5*60000;
+      const isAnn=m.kind==='announcement', isSys=m.kind==='install';
+      const hitMe=Array.isArray(m.mentions)&&state.meId&&m.mentions.includes(state.meId);
+      const el=document.createElement('div'); el.className='msg'+(cont&&!isAnn?' cont':'')+(isSys?' sys':'')+(isAnn?' ann':'')+(hitMe?' hit':'');
+      const av=document.createElement('div'); av.className='avatar'; if(p.color) av.style.background=p.color;
+      if(p.avatarUrl){ const im=document.createElement('img'); im.src=p.avatarUrl; im.alt=''; av.append(im); } else av.textContent=initials(name);
+      const body=document.createElement('div'); body.style.minWidth='0';
+      const head=document.createElement('div'); head.className='msg-head';
+      const b=document.createElement('b'); b.textContent=p.isMe?name+' (you)':name;
+      const t=document.createElement('time'); t.textContent=timeOf(m.createdAt); head.append(b,t);
+      if(isAnn){ const tg=document.createElement('span'); tg.className='ann-tag'; tg.textContent='Announcement'; head.append(tg); }
+      body.append(head);
+      if(m.text){ const tx=document.createElement('div'); tx.className='msg-text'; fillText(tx,m.text,ps); body.append(tx); }
+      if(m.imageId){ const im=document.createElement('img'); im.className='msg-img'; setPhoto(im,m.imageId); im.alt='Photo from '+name; im.loading='lazy'; body.append(im); }
+      const acts=document.createElement('div'); acts.className='msg-actions';
+      if((m.imageId||looksLikeSale(m.text)) && !isSys && !isAnn){
+        const add=document.createElement('button'); add.textContent=m.authorId===state.meId?'Add sale to board':'Add sale to board for them';
+        add.onclick=()=>readFromChat(m); acts.append(add);
+      }
+      if(m.authorId&&m.authorId===state.meId){
+        const del=document.createElement('button'); del.className='del'; del.textContent='Delete';
+        const coll=isAnn?'announcements/':'messages/';
+        del.onclick=async()=>{ if(!confirm(isAnn?'Delete this announcement?':'Delete this message?')) return; try{ await state.db.doc(coll+m.id).delete(); }catch(e){ toast(writeErr(e)); } };
+        acts.append(del);
+      }
+      if(acts.children.length) body.append(acts);
+      el.append(av,body); box.append(el); prev=m;
+    });
+    if(nearBottom) window.scrollTo(0,document.body.scrollHeight);
+  }
+  function looksLikeSale(t){ return !!t&&/\d{1,2}[\/.-]\d{1,2}|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b/i.test(t); }
+  function readFromChat(m){
+    showTab('installs'); state.pendingCredit=m.authorId||state.meId||''; clearShot();
+    const plain=(m.text||'').replace(/@\{[^}]+\}/g,'').trim();
+    if(plain&&!m.imageId){ readSales(null,plain.slice(0,8000)); return; }
+    if(m.imageId){ photoUrl(m.imageId).then(u=>{ state.shotUrl=u; openPaste(); }); return; }
+    openPaste();
+  }
+  function setAttach(file){
+    state.attach=file; const pv=$('#attachPreview'); pv.innerHTML='';
+    if(!file){ pv.hidden=true; return; }
+    pv.hidden=false; const im=document.createElement('img'); im.src=URL.createObjectURL(file); im.alt='Photo to send';
+    const lab=document.createElement('span'); lab.textContent='Photo attached';
+    const x=document.createElement('button'); x.textContent='Remove'; x.onclick=()=>setAttach(null);
+    pv.append(im,lab,x);
+  }
+  $('#photoBtn').onclick=()=>{ if(!state.assets){ toast('Photo sharing isn\'t available for your access level.'); return; } $('#chatFile').value=''; $('#chatFile').click(); };
+  $('#chatFile').onchange=e=>{ const f=e.target.files[0]; if(f) setAttach(f); };
+  const msgInput=$('#msgInput');
+  msgInput.addEventListener('input',()=>{ msgInput.style.height='auto'; msgInput.style.height=Math.min(msgInput.scrollHeight,140)+'px'; });
+  msgInput.addEventListener('input',updateSuggest);
+  msgInput.addEventListener('blur',()=>setTimeout(()=>{ $('#suggest').hidden=true; },150));
+  msgInput.addEventListener('keydown',e=>{
+    if(!$('#suggest').hidden&&state.suggestions.length){
+      if(e.key==='ArrowDown'||e.key==='ArrowUp'){ e.preventDefault(); const n=state.suggestions.length; state.suggestIdx=(state.suggestIdx+(e.key==='ArrowDown'?1:n-1))%n; [...$('#suggest').children].forEach((b,i)=>b.classList.toggle('on',i===state.suggestIdx)); return; }
+      if(e.key==='Enter'||e.key==='Tab'){ e.preventDefault(); pickMention(state.suggestions[state.suggestIdx]); return; }
+      if(e.key==='Escape'){ $('#suggest').hidden=true; return; }
+    }
+    if(e.key==='Enter'&&!e.shiftKey&&!('ontouchstart' in window)){ e.preventDefault(); sendMsg(); }
+  });
+  $('#sendBtn').onclick=sendMsg;
+  async function sendMsg(){
+    const raw=msgInput.value.trim(); if(!raw&&!state.attach) return;
+    const {text,mentions}=encodeMentions(raw);
+    if(!state.db){ toast('Chat isn\'t connected in this view.'); return; }
+    const btn=$('#sendBtn'); btn.disabled=true;
+    try{
+      if(state.announceMode){
+        if(!text){ toast('Write the announcement first.'); return; }
+        await state.db.collection('announcements').add({authorId:state.meId||'', text, mentions, createdAt:new Date().toISOString()});
+        state.announceMode=false; $('#annBtn').setAttribute('aria-pressed','false'); msgInput.placeholder='Message the team'; $('#photoBtn').disabled=false;
+      } else {
+        let imageId='';
+        if(state.attach){ btn.textContent='Uploading…'; const up=await state.assets.upload(state.attach); imageId=up.id; }
+        await state.db.collection('messages').add({authorId:state.meId||'', text, imageId, mentions, createdAt:new Date().toISOString()});
+      }
+      msgInput.value=''; msgInput.style.height='auto'; setAttach(null); state.mentionMap={};
+    }catch(e){ toast(e&&e.code==='too_large'?'That photo is too big to send.':writeErr(e)); }
+    finally{ btn.disabled=false; btn.textContent='Send'; }
+  }
+
+
+  // ---------- mentions, announcements, system posts ----------
+  const MENTION_RE=/@\{([^}]+)\}/g;
+  function fillText(el,text,ps){
+    let last=0; MENTION_RE.lastIndex=0; let mm;
+    while((mm=MENTION_RE.exec(text))){
+      if(mm.index>last) el.append(document.createTextNode(text.slice(last,mm.index)));
+      const p=ps[mm[1]]||{}; const sp=document.createElement('span');
+      sp.className='mention'+(mm[1]===state.meId?' me':''); sp.textContent='@'+(p.name||'Someone');
+      el.append(sp); last=mm.index+mm[0].length;
+    }
+    if(last<text.length) el.append(document.createTextNode(text.slice(last)));
+  }
+  function streamItems(){
+    return [...state.messages,...state.announcements.map(a=>({...a,kind:'announcement'}))]
+      .sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
+  }
+  async function postSystem(text){
+    if(!state.db) return;
+    try{ await state.db.collection('messages').add({authorId:state.meId||'', text, imageId:'', kind:'install', createdAt:new Date().toISOString()}); }catch(_){}
+  }
+  function dismissedAnn(){ try{ return localStorage.getItem('annDismissed')||''; }catch(_){ return ''; } }
+  async function renderPinned(){
+    const box=$('#pinned'); const a=state.announcements[state.announcements.length-1];
+    if(!a||a.id===dismissedAnn()){ box.hidden=true; return; }
+    let ps={}; const ids=[a.authorId,...(a.mentions||[])].filter(Boolean);
+    if(state.user&&ids.length){ try{ ps=await state.user.profiles(ids); }catch(_){} }
+    box.hidden=false; box.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2a1 1 0 001 1h2l5 4V6L6 10H4a1 1 0 00-1 1z"/><path d="M15.5 8.5a5 5 0 010 7M18.5 5.5a9 9 0 010 13"/></svg>';
+    const mid=document.createElement('div'); const p=document.createElement('p'); fillText(p,a.text||'',ps);
+    const sm=document.createElement('small'); sm.textContent=((ps[a.authorId]||{}).name||'Someone')+', '+dayLabel(a.createdAt).toLowerCase().replace(/^\w/,c=>c.toUpperCase())+' at '+timeOf(a.createdAt);
+    mid.append(p,sm);
+    const x=document.createElement('button'); x.textContent='Dismiss';
+    x.onclick=()=>{ try{ localStorage.setItem('annDismissed',a.id); }catch(_){} box.hidden=true; };
+    box.append(mid,x);
+  }
+  $('#annBtn').onclick=()=>{
+    state.announceMode=!state.announceMode; $('#annBtn').setAttribute('aria-pressed',state.announceMode);
+    msgInput.placeholder=state.announceMode?'Write an announcement for everyone':'Message the team';
+    $('#photoBtn').disabled=state.announceMode; if(state.announceMode) setAttach(null); msgInput.focus();
+  };
+
+  // mention autocomplete
+  function mentionQuery(){
+    const v=msgInput.value.slice(0,msgInput.selectionStart||0); const mm=/(^|\s)@([^\s@]*)$/.exec(v);
+    return mm?{q:mm[2],start:v.length-mm[2].length-1}:null;
+  }
+  let suggestToken=0;
+  async function updateSuggest(){
+    const box=$('#suggest'); const mq=mentionQuery();
+    if(!mq||!state.user||typeof state.user.search!=='function'){ box.hidden=true; state.suggestions=[]; return; }
+    const tok=++suggestToken; let res=[];
+    try{ res=await state.user.search(mq.q); }catch(_){}
+    if(tok!==suggestToken) return;
+    res=res.filter(r=>r.name&&!r.isMe).slice(0,6); state.suggestions=res; state.suggestIdx=0;
+    if(!res.length){ box.hidden=true; return; }
+    box.hidden=false; box.innerHTML='';
+    res.forEach((r,i)=>{
+      const b=document.createElement('button'); b.type='button'; b.setAttribute('role','option'); if(i===0) b.className='on';
+      const av=document.createElement('span'); av.className='avatar'; if(r.color) av.style.background=r.color;
+      if(r.avatarUrl){ const im=document.createElement('img'); im.src=r.avatarUrl; im.alt=''; av.append(im); } else av.textContent=initials(r.name);
+      const nm=document.createElement('span'); nm.textContent=r.name; b.append(av,nm);
+      b.onmousedown=e=>e.preventDefault(); b.onclick=()=>pickMention(r); box.append(b);
+    });
+  }
+  function pickMention(r){
+    const mq=mentionQuery(); if(!mq) return;
+    const pos=msgInput.selectionStart; const label='@'+r.name;
+    msgInput.value=msgInput.value.slice(0,mq.start)+label+' '+msgInput.value.slice(pos);
+    state.mentionMap[label]=r.id;
+    const c=mq.start+label.length+1; msgInput.setSelectionRange(c,c); msgInput.focus();
+    $('#suggest').hidden=true; state.suggestions=[];
+  }
+  function encodeMentions(text){
+    const ids=new Set(); let out=text;
+    Object.keys(state.mentionMap).sort((a,b)=>b.length-a.length).forEach(label=>{
+      if(out.includes(label)){ const id=state.mentionMap[label]; out=out.split(label).join('@{'+id+'}'); ids.add(id); }
+    });
+    return {text:out, mentions:[...ids]};
+  }
+
+  // ---------- wiring ----------
+  $('#uploadBtn').onclick=()=>{ clearShot(); state.pendingCredit=state.meId||''; openPaste(); };
+  $('#manualBtn').onclick=()=>{ clearShot(); openReview([{agentId:state.meId||'',agent:'',saleDate:todayISO(),installDate:''}],{title:'Add install',hint:'Enter the dates, then save.'}); ensureNames([state.meId]); };
+  $('#agentFilter').onchange=render; $('#search').oninput=render;
+  $('#pastBtn').onclick=()=>{ state.showPast=!state.showPast; render(); };
+  // re-render at midnight-ish so "today" stays right on an open tab
+  setInterval(()=>{ if(!state.drafts&&!state.openItem) render(); },60*60*1000);
+  render();
+
+  // ---------- Supabase backend ----------
+  // An adapter with the same small API the board already uses (collection().add, doc().update, onSnapshot),
+  // mapping camelCase fields in the app to snake_case columns in Postgres.
+  const COLS={
+    installs:{agentId:'agent_id',customer:'customer',address:'address',phone:'phone',mon:'mon',saleDate:'sale_date',installDate:'install_date',window:'appt_window',vzStatus:'vz_status',status:'status',rescheduleCount:'reschedule_count',history:'history',createdBy:'created_by',createdAt:'created_at',statusAt:'status_at',statusBy:'status_by'},
+    messages:{authorId:'author_id',text:'text',imageId:'image_path',mentions:'mentions',kind:'kind',createdAt:'created_at'},
+    announcements:{authorId:'author_id',text:'text',mentions:'mentions',createdAt:'created_at'}
+  };
+  const NULLABLE=new Set(['agent_id','sale_date','mon','created_by','status_by','status_at','image_path']);
+  function toRow(table,obj){ const map=COLS[table], row={}; for(const k in obj){ const c=map[k]; if(!c) continue; let v=obj[k]; if(v===''&&NULLABLE.has(c)) v=null; if(c==='kind'&&!v) v='chat'; row[c]=v; } return row; }
+  function fromRow(table,row){ const map=COLS[table], o={id:row.id}; for(const k in map){ const v=row[map[k]]; o[k]=v==null?'':v; } if(o.mentions==='') o.mentions=[]; if(o.history==='') o.history=[]; return o; }
+  function wrapErr(error){ return {code:error.code||'error',message:error.message}; }
+  function makeDb(){
+    function query(table,order,dir,lim){
+      return {
+        orderBy(f,d){ return query(table,COLS[table][f]||f,d||'asc',lim); },
+        limit(n){ return query(table,order,dir,n); },
+        async add(obj){ const {error}=await sb.from(table).insert(toRow(table,obj)); if(error) throw wrapErr(error); },
+        onSnapshot(next,onErr){
+          let timer=null, alive=true;
+          const load=async()=>{
+            let q=sb.from(table).select('*');
+            if(order) q=q.order(order,{ascending:dir!=='desc'}); else q=q.order('created_at',{ascending:true});
+            q=q.limit(lim||5000);
+            const {data,error}=await q;
+            if(!alive) return;
+            if(error){ onErr&&onErr(wrapErr(error)); return; }
+            const docs=data.map(r=>{ const o=fromRow(table,r); const id=o.id; delete o.id; return {id,exists:true,data:()=>o}; });
+            next({docs,size:docs.length,empty:!docs.length});
+          };
+          const bump=()=>{ clearTimeout(timer); timer=setTimeout(load,150); };
+          const ch=sb.channel('rt-'+table+'-'+Math.random().toString(36).slice(2)).on('postgres_changes',{event:'*',schema:'public',table},bump).subscribe(st=>{ if(st==='SUBSCRIBED') bump(); });
+          load();
+          document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') bump(); });
+          return ()=>{ alive=false; sb.removeChannel(ch); };
+        }
+      };
+    }
+    return {
+      collection:t=>query(t),
+      doc(path){ const [t,id]=path.split('/'); return {
+        async update(obj){ const {error}=await sb.from(t).update(toRow(t,obj)).eq('id',id); if(error) throw wrapErr(error); },
+        async delete(){ const {data,error}=await sb.from(t).delete().eq('id',id).select('id'); if(error) throw wrapErr(error); if(!data||!data.length) throw {code:'42501'}; }
+      }; }
+    };
+  }
+  const PALETTE=['#0B7A84','#7A4BC2','#C2410C','#2563EB','#15803D','#B42318','#A16207','#DB2777'];
+  function colorFor(id){ let h=0; for(const c of id||'') h=(h*31+c.charCodeAt(0))>>>0; return PALETTE[h%PALETTE.length]; }
+  function makeUser(){
+    const prof=()=>state.profiles||{};
+    const toProfile=p=>({id:p.id,name:p.full_name||'',avatarUrl:'',color:colorFor(p.id),email:null,isMe:p.id===state.meId});
+    return {
+      async id(){ return state.meId; },
+      async canEdit(){ return (prof()[state.meId]||{}).role==='manager'; },
+      async profiles(ids){ const out={}; [].concat(ids).forEach(id=>{ const p=prof()[id]; if(p) out[id]=toProfile(p); }); return out; },
+      async search(q){ q=(q||'').toLowerCase(); return Object.values(prof()).filter(p=>p.full_name&&p.full_name.toLowerCase().includes(q)).sort((a,b)=>a.full_name.localeCompare(b.full_name)).map(toProfile); }
+    };
+  }
+  const assetsApi={
+    async upload(blob){
+      const img=await toJpeg(blob).catch(()=>blob);
+      const path=state.meId+'/'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'.jpg';
+      const {error}=await sb.storage.from('chat-photos').upload(path,img,{contentType:'image/jpeg'});
+      if(error) throw {code:/size|large/i.test(error.message)?'too_large':'upload_error',message:error.message};
+      return {id:path};
+    }
+  };
+
+  // ---------- sign-in ----------
+  const gate=$('#gate'), gErr=$('#gErr');
+  function gateStep(step){ ['gateSetup','gateEmail','gateName'].forEach(id=>$('#'+id).hidden=id!==step); gErr.textContent=''; gate.hidden=!step; }
+  let sb=null;
+  if(!/^https:\/\/.+\.supabase\.co\/?$/.test(SUPABASE_URL)||!SUPABASE_ANON_KEY||SUPABASE_ANON_KEY.startsWith('PASTE')||!window.supabase){ gateStep('gateSetup'); }
+  else {
+    sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true}});
+    $('#gSend').onclick=async()=>{
+      const email=$('#gEmail').value.trim().toLowerCase(), password=$('#gPass').value;
+      if(!email||!password){ gErr.textContent='Enter your email and password.'; return; }
+      $('#gSend').disabled=true; gErr.textContent='';
+      const {error}=await sb.auth.signInWithPassword({email,password});
+      $('#gSend').disabled=false;
+      if(error) gErr.textContent=/invalid/i.test(error.message)?'That email and password don\'t match. Check them, or ask your manager to reset your password.':/rate|seconds/i.test(error.message)?'Too many tries. Wait a minute and try again.':'Couldn\'t sign in. Check your connection and try again.';
+    };
+    $('#gPass').addEventListener('keydown',e=>{ if(e.key==='Enter') $('#gSend').click(); });
+    $('#gSaveName').onclick=async()=>{
+      const name=$('#gName').value.trim(); if(name.length<2){ gErr.textContent='Enter your name.'; return; }
+      const {error}=await sb.from('profiles').update({full_name:name}).eq('id',state.meId);
+      if(error){ gErr.textContent='Couldn\'t save your name. Try again.'; return; }
+      state.profiles[state.meId]={...(state.profiles[state.meId]||{id:state.meId}),full_name:name};
+      gateStep(null); startBoard();
+    };
+    $('#signOut').onclick=async()=>{ if(!confirm('Sign out of the Install Board?')) return; await sb.auth.signOut(); location.reload(); };
+
+    let started=false;
+    async function onSession(session){
+      if(!session){ gateStep('gateEmail'); return; }
+      state.meId=session.user.id;
+      await loadProfiles();
+      const me=state.profiles[state.meId];
+      if(!me||!me.full_name){ gateStep('gateName'); return; }
+      gateStep(null); startBoard();
+    }
+    async function loadProfiles(){
+      const {data}=await sb.from('profiles').select('id,full_name,role');
+      state.profiles={}; (data||[]).forEach(p=>state.profiles[p.id]=p);
+    }
+    function startBoard(){
+      if(started) return; started=true;
+      $('#signOut').hidden=false;
+      state.user=makeUser(); state.assets=assetsApi; state.db=makeDb();
+      state.canAnnounce=(state.profiles[state.meId]||{}).role==='manager';
+      $('#annBtn').hidden=!state.canAnnounce; $('#composerIn').classList.toggle('admin',state.canAnnounce);
+      const sbtn=$('#saveBtn'); if(sbtn) sbtn.disabled=false;
+      // keep teammate names fresh as people join
+      sb.channel('rt-profiles').on('postgres_changes',{event:'*',schema:'public',table:'profiles'},async()=>{ await loadProfiles(); state.names={}; ensureNames(Object.keys(state.profiles)); if(state.tab==='chat') renderChat(); }).subscribe();
+      ensureNames(Object.keys(state.profiles));
+      state.db.collection('installs').onSnapshot(snap=>{
+        state.installs=snap.docs.map(d=>({id:d.id,...d.data()}));
+        render(); ensureNames(state.installs.map(i=>i.agentId));
+      },()=>{ $('#offline').hidden=false; });
+      state.db.collection('announcements').orderBy('createdAt','desc').limit(50).onSnapshot(snap=>{
+        state.announcements=snap.docs.map(d=>({id:d.id,...d.data()})).reverse();
+        renderPinned(); if(state.tab==='chat'){ renderChat(); markSeen(); } else updateBadge();
+      },()=>{});
+      state.db.collection('messages').orderBy('createdAt','desc').limit(200).onSnapshot(snap=>{
+        state.messages=snap.docs.map(d=>({id:d.id,...d.data()})).reverse();
+        if(state.tab==='chat'){ renderChat(); markSeen(); } else updateBadge();
+      },()=>{});
+      renderPinned();
+    }
+    sb.auth.getSession().then(({data})=>onSession(data.session));
+    sb.auth.onAuthStateChange((ev,session)=>{ if(ev==='SIGNED_IN'&&!started) onSession(session); if(ev==='SIGNED_OUT') location.reload(); });
+  }
+})();
+</script>
+</body>
+</html>

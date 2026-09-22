@@ -196,7 +196,8 @@ button{cursor:pointer}
 .wl-top input{flex:1;min-width:0;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:44px}
 .wl-phones{display:grid;gap:8px}
 .wl-phones label{display:grid;gap:4px;font-size:.88rem;color:var(--muted)}
-.wl-line{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}
+.wl-line{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:end}
+@media (max-width:420px){.wl-line{grid-template-columns:1fr auto}.wl-line .sim-wrap{grid-column:1/-1}}
 .wl-line select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 8px;min-height:44px}
 .wl-flag{font-size:.72rem;font-weight:600;padding:3px 8px;border-radius:999px;background:color-mix(in srgb,var(--signal) 18%,transparent);white-space:nowrap}
 .wl-phones input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 12px;min-height:44px}
@@ -1725,7 +1726,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   function buildPhoneInputs(){
     const n=Math.max(1,Math.min(20,parseInt($('#wlLines').value||'1',10)||1));
     const box=$('#wlPhones');
-    const old=[...box.querySelectorAll('.wl-line')].map(r=>({p:r.querySelector('input').value,d:r.querySelector('select').value}));
+    const old=[...box.querySelectorAll('.wl-line')].map(r=>{ const sels=r.querySelectorAll('select'); return {p:r.querySelector('input').value,d:sels[0].value,s:sels[1]?sels[1].value:'esim'}; });
     box.innerHTML='';
     for(let k=0;k<n;k++){
       const row=document.createElement('div'); row.className='wl-line';
@@ -1737,7 +1738,13 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       const sel=document.createElement('select'); sel.setAttribute('aria-label','Device for line '+(k+1));
       [['byod','BYOD'],['new','New device']].forEach(([v,t])=>{ const o=document.createElement('option'); o.value=v; o.textContent=t; sel.append(o); });
       sel.value=(old[k]||{}).d||'byod'; dl.append(sel);
-      row.append(l,dl); box.append(row);
+      const sl=document.createElement('label'); sl.className='sim-wrap'; sl.textContent='SIM';
+      const sim=document.createElement('select'); sim.setAttribute('aria-label','SIM type for line '+(k+1));
+      [['esim','eSIM'],['physical','Physical SIM']].forEach(([v,t])=>{ const o=document.createElement('option'); o.value=v; o.textContent=t; sim.append(o); });
+      sim.value=(old[k]||{}).s||'esim'; sl.append(sim);
+      const syncSim=()=>{ sl.hidden=sel.value!=='byod'; };
+      sel.onchange=syncSim; syncSim();
+      row.append(l,dl,sl); box.append(row);
     }
   }
   function openWlForm(){
@@ -1759,7 +1766,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   $('#wlLines').oninput=buildPhoneInputs;
   $('#wlSave').onclick=async()=>{
     const msg=$('#wlMsg'), customer=$('#wlCustomer').value.trim(), date=$('#wlDate').value, n=parseInt($('#wlLines').value||'1',10);
-    const rows=[...$('#wlPhones').querySelectorAll('.wl-line')].map(r=>({phone:phoneDigits(r.querySelector('input').value),device:r.querySelector('select').value}));
+    const rows=[...$('#wlPhones').querySelectorAll('.wl-line')].map(r=>{ const sels=r.querySelectorAll('select'); const device=sels[0].value; return {phone:phoneDigits(r.querySelector('input').value),device,sim:device==='byod'?(sels[1]?sels[1].value:'esim'):null}; });
     const phones=rows.map(r=>r.phone);
     if(!customer){ tmSay(msg,'Enter the customer name.','err'); return; }
     if(!date){ tmSay(msg,'Pick the sale date.','err'); return; }
@@ -1771,7 +1778,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       const agentId=state.canAnnounce?($('#wlCredit').value||state.meId):state.meId;
       const {data,error}=await sb.from('wireless_sales').insert({agent_id:agentId,customer,sale_date:date,line_count:phones.length}).select('id').single();
       if(error) throw error;
-      const {error:e2}=await sb.from('wireless_lines').insert(rows.map(r=>({sale_id:data.id,phone:r.phone,device:r.device})));
+      const {error:e2}=await sb.from('wireless_lines').insert(rows.map(r=>({sale_id:data.id,phone:r.phone,device:r.device,sim:r.sim})));
       if(e2) throw e2;
       toast(phones.length+(phones.length===1?' line saved':' lines saved')); closeWlForm();
     }catch(e){ tmSay(msg,writeErr(e),'err'); }
@@ -1798,7 +1805,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       const b=document.createElement('b'); b.textContent=w.customer||'Wireless sale';
       const sub=document.createElement('div'); sub.className='sub'; sub.textContent=agentLabel(w.agentId)+' · '+fmtShort(w.saleDate);
       mid.append(b,sub);
-      if(followupDue(w)){ const f=document.createElement('span'); f.className='wl-flag'; f.textContent='📦 Check in'; sub.append(' '); sub.append(f); }
+      if(followupDue(w)){ const f=document.createElement('span'); f.className='wl-flag'; f.textContent=shipLines(w).devices.length?'📦 Check in':'📮 Check in'; sub.append(' '); sub.append(f); }
       const chip=document.createElement('span'); chip.className='wl-chip'+(ls.length&&paid===ls.length?' paid':'');
       chip.textContent=!ls.length?'—':paid===ls.length?'Paid':paid?paid+'/'+ls.length+' paid':'Unpaid';
       card.append(n,mid,chip); card.onclick=()=>openWireless(w.id); box.append(card);
@@ -1828,23 +1835,23 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     ls.forEach((l,idx)=>{
       const li=document.createElement('li');
       const a=document.createElement('a'); a.href='tel:'+l.phone; a.textContent='Line '+(idx+1)+': '+fmtPhone(l.phone); a.style.color='var(--signal)';
-      const sm=document.createElement('small'); sm.textContent=(l.device==='new'?'New device':'BYOD')+' · '+(l.payoutStatus==='paid'?'paid '+fmtStamp(l.paidAt):'not paid yet');
+      const sm=document.createElement('small'); sm.textContent=(l.device==='new'?'New device':'BYOD · '+(l.sim==='physical'?'physical SIM':'eSIM'))+' · '+(l.payoutStatus==='paid'?'paid '+fmtStamp(l.paidAt):'not paid yet');
       li.append(a,sm); ul.append(li);
     });
     sh.append(ul);
-    const newOnes=ls.filter(l=>l.device==='new').length;
-    if(newOnes&&wlCanAct(w)){
+    const ship=shipLines(w), shipping=ship.devices.length+ship.sims.length;
+    if(shipping&&wlCanAct(w)){
       const due=addBusinessDays(w.saleDate,2);
       const fu=document.createElement('div'); fu.className='po-actions';
       if(w.deviceFollowupAt){
         const p=document.createElement('p'); p.className='lb-sub'; p.style.width='100%'; p.style.margin='0';
-        p.textContent='📦 Device check-in done '+fmtStamp(w.deviceFollowupAt);
+        p.textContent=(ship.devices.length?'📦 Device':'📮 SIM')+' check-in done '+fmtStamp(w.deviceFollowupAt);
         const un=document.createElement('button'); un.type='button'; un.className='btn btn-ghost btn-small'; un.textContent='Undo';
         un.onclick=async()=>{ await markFollowup(w,false); closeDetail(); };
         fu.append(p,un);
       } else {
         const href=deviceSms(w);
-        if(href){ const a=document.createElement('a'); a.className='text-btn confirm'; a.href=href; a.textContent='📦 Text device check-in';
+        if(href){ const a=document.createElement('a'); a.className='text-btn confirm'; a.href=href; a.textContent=ship.devices.length?'📦 Text device check-in':'📮 Text SIM check-in';
           a.onclick=()=>{ markFollowup(w,true); }; fu.append(a); }
         const mk=document.createElement('button'); mk.type='button'; mk.className='btn btn-ghost btn-small'; mk.textContent='Mark checked in';
         mk.onclick=async()=>{ await markFollowup(w,true); closeDetail(); }; fu.append(mk);
@@ -1866,17 +1873,22 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
   // ---------- new-device follow-up ----------
   function addBusinessDays(dateStr,n){ const d=parseISO(dateStr); if(!d) return null; let left=n; while(left>0){ d.setDate(d.getDate()+1); const w=d.getDay(); if(w!==0&&w!==6) left--; } return d; }
+  function shipLines(w){ const ls=linesOf(w.id); return {devices:ls.filter(l=>l.device==='new'), sims:ls.filter(l=>l.device==='byod'&&l.sim==='physical')}; }
   function followupDue(w){
-    const ls=linesOf(w.id), newOnes=ls.filter(l=>l.device==='new').length;
-    if(!newOnes||w.deviceFollowupAt) return false;
+    const {devices,sims}=shipLines(w);
+    if((!devices.length&&!sims.length)||w.deviceFollowupAt) return false;
     const due=addBusinessDays(w.saleDate,2); if(!due) return false;
     const t=new Date(); t.setHours(0,0,0,0); return due.getTime()<=t.getTime();
   }
   function deviceSms(w){
-    const ls=linesOf(w.id), newOnes=ls.filter(l=>l.device==='new');
-    const d=phoneDigits((newOnes[0]||ls[0]||{}).phone||''); if(d.length!==10) return '';
-    const first=customerFirst(w.customer), me=myFirstName(), many=newOnes.length>1;
-    const body='Hi'+(first?' '+first:'')+'! This is '+(me||'your rep')+' with Verizon. Just checking in: did your new '+(many?'phones':'phone')+' arrive and get set up okay? If you need help activating or moving over your photos and contacts, reply here and I\'ll walk you through it. Thanks again for your business!';
+    const ls=linesOf(w.id), {devices,sims}=shipLines(w);
+    const d=phoneDigits((devices[0]||sims[0]||ls[0]||{}).phone||''); if(d.length!==10) return '';
+    const first=customerFirst(w.customer), me=myFirstName();
+    let what, help;
+    if(devices.length&&sims.length){ what='new '+(devices.length>1?'phones':'phone')+' and SIM '+(sims.length>1?'cards':'card'); help='activating or moving over your photos and contacts'; }
+    else if(devices.length){ what='new '+(devices.length>1?'phones':'phone'); help='activating or moving over your photos and contacts'; }
+    else { what='SIM '+(sims.length>1?'cards':'card'); help='getting the SIM activated'; }
+    const body='Hi'+(first?' '+first:'')+'! This is '+(me||'your rep')+' with Verizon. Just checking in: did your '+what+' arrive and get set up okay? If you need help with '+help+', reply here and I\'ll walk you through it. Thanks again for your business!';
     return 'sms:+1'+d+'?&body='+encodeURIComponent(body);
   }
   async function markFollowup(w,done){
@@ -1901,7 +1913,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     messages:{authorId:'author_id',text:'text',imageId:'image_path',mentions:'mentions',kind:'kind',createdAt:'created_at'},
     announcements:{authorId:'author_id',text:'text',mentions:'mentions',createdAt:'created_at'},
     wireless_sales:{agentId:'agent_id',customer:'customer',saleDate:'sale_date',lineCount:'line_count',createdBy:'created_by',createdAt:'created_at',deviceFollowupAt:'device_followup_at'},
-    wireless_lines:{saleId:'sale_id',phone:'phone',device:'device',payoutStatus:'payout_status',paidAt:'paid_at',paidBy:'paid_by',createdAt:'created_at'}
+    wireless_lines:{saleId:'sale_id',phone:'phone',device:'device',sim:'sim',payoutStatus:'payout_status',paidAt:'paid_at',paidBy:'paid_by',createdAt:'created_at'}
   };
   const NULLABLE=new Set(['agent_id','sale_date','mon','created_by','status_by','status_at','image_path','paid_at','paid_by','payout_amount']);
   function toRow(table,obj){ const map=COLS[table], row={}; for(const k in obj){ const c=map[k]; if(!c) continue; let v=obj[k]; if(v===''&&NULLABLE.has(c)) v=null; if(c==='kind'&&!v) v='chat'; row[c]=v; } return row; }

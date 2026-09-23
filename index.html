@@ -175,6 +175,11 @@ button{cursor:pointer}
 .lb-score span{font-size:.75rem;color:var(--muted)}
 .lb-bar{grid-column:2/-1;height:5px;border-radius:3px;background:var(--line);overflow:hidden}
 .lb-bar i{display:block;height:100%;background:var(--signal);border-radius:3px}
+.lb-goals{grid-column:2/-1;display:grid;gap:5px;margin-top:2px}
+.goal-mini{display:grid;grid-template-columns:62px 1fr auto;gap:8px;align-items:center;font-size:.74rem;color:var(--muted)}
+.goal-mini .lb-bar{grid-column:auto;height:6px}
+.goal-mini b{font-weight:600;font-variant-numeric:tabular-nums}
+.goal-mini.hit b{color:var(--done)}
 .lb-empty{color:var(--muted);text-align:center;padding:28px 10px}
 .po-top{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:12px}
 .po-top label{display:grid;gap:4px;font-size:.88rem;color:var(--muted)}
@@ -1625,20 +1630,23 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const tot=$('#lbTotals'); tot.innerHTML='';
     const goalNote=$('#lbGoal');
     if(goalNote){
-      const mine=state.canAnnounce?null:goalFor(state.meId,state.lbMetric==='installs'?'sales':state.lbMetric);
+      const mine=state.canAnnounce?null:(goalFor(state.meId,'sales')||goalFor(state.meId,'lines'));
       const gs=goalDefault('sales'), gl=goalDefault('lines');
       const bits=[gs?gs+' internet sales':'', gl?gl+' wireless lines':''].filter(Boolean);
       const custom=Object.values(state.goals||{}).some(g=>g&&(g.sales!=null||g.lines!=null));
       goalNote.hidden=!(state.lbPeriod==='week'&&(bits.length||custom||mine));
-      goalNote.textContent=!state.canAnnounce&&mine
-        ? '🎯 Your weekly goal: '+mine+(state.lbMetric==='lines'?' wireless lines':' internet sales')
-        : '🎯 Weekly goal'+(bits.length?': '+bits.join(' · '):'')+(custom?(bits.length?' (some agents differ)':' set per agent'):'');
+      const myS=goalFor(state.meId,'sales'), myL=goalFor(state.meId,'lines');
+      const myBits=[myS?myS+' internet sales':'', myL?myL+' wireless lines':''].filter(Boolean);
+      goalNote.textContent=!state.canAnnounce&&myBits.length
+        ? '🎯 Your weekly goal: '+myBits.join(' · ')
+        : '🎯 Weekly goals'+(bits.length?': '+bits.join(' · '):'')+(custom?(bits.length?' (some agents differ)':' set per agent'):'');
     }
     [[sales,'Sales'],[installs,'Installs'],[lines,'Wireless lines'],...(longPeriod?[[installs+cancels?Math.round(100*installs/(installs+cancels))+'%':'—','Install rate']]:[])].forEach(([v,l])=>{ const d=document.createElement('div'); d.className='lb-tot'; const b=document.createElement('b'); b.textContent=v; const sp=document.createElement('span'); sp.textContent=l; d.append(b,sp); tot.append(d); });
     const key=state.lbMetric, other=key==='sales'?'installs':'sales';
     const unit=key==='lines'?['line','lines']:key==='installs'?['install','installs']:['sale','sales'];
-    if(wk&&state.meId&&!by[state.meId]&&goalFor(state.meId,key)) get(state.meId);
-    const rows=Object.values(by).filter(r=>r.sales||r.installs||r.cancels||r.lines||(wk&&r.id===state.meId&&goalFor(r.id,key)))
+    const anyGoal=id=>!!(goalFor(id,'sales')||goalFor(id,'lines'));
+    if(wk&&state.meId&&!by[state.meId]&&anyGoal(state.meId)) get(state.meId);
+    const rows=Object.values(by).filter(r=>r.sales||r.installs||r.cancels||r.lines||(wk&&r.id===state.meId&&anyGoal(r.id)))
       .sort((a,b)=>(b[key]-a[key])||(b[other]-a[other])||agentLabel(a.id).localeCompare(agentLabel(b.id)));
     const list=$('#lbList'); list.innerHTML='';
     if(!rows.length){ const e=document.createElement('p'); e.className='lb-empty'; e.textContent=state.lbPeriod==='today'?'Nothing on the board for today yet.':'No sales or installs in this period yet.'; list.append(e); return; }
@@ -1656,13 +1664,27 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       sub.textContent=[key==='lines'?r.sales+' internet sold':(key==='sales'?doneWord:r.sales+' sold'), key!=='lines'&&r.lines?r.lines+(r.lines===1?' wireless line':' wireless lines'):'', r.cancels&&key!=='lines'?r.cancels+' cancelled':'', key==='lines'?'':rate].filter(Boolean).join(' · ');
       mid.append(nm,sub);
       const sc=document.createElement('div'); sc.className='lb-score'; const b=document.createElement('b'); b.textContent=r[key]; const sp=document.createElement('span'); sp.textContent=r[key]===1?unit[0]:unit[1]; sc.append(b,sp);
-      const goal=wk&&key!=='installs'?goalFor(r.id,key):null;
-      if(goal){ const g=document.createElement('div'); g.className='lb-sub'; g.style.gridColumn='2/-1';
-        g.textContent=r[key]>=goal?'🎯 Goal hit — '+r[key]+' of '+goal:r[key]+' of '+goal+' toward this week\'s goal'; mid.append(g); }
-      const bar=document.createElement('div'); bar.className='lb-bar'; const fill=document.createElement('i');
-      fill.style.width=Math.min(100,Math.round(100*r[key]/(goal||top)))+'%';
-      if(goal&&r[key]>=goal) fill.style.background='var(--done)';
-      bar.append(fill);
+      const gSales=wk?goalFor(r.id,'sales'):null, gLines=wk?goalFor(r.id,'lines'):null;
+      let bar;
+      if(gSales||gLines){
+        bar=document.createElement('div'); bar.className='lb-goals';
+        const mini=(label,have,goal)=>{
+          if(!goal) return;
+          const wrapM=document.createElement('div'); wrapM.className='goal-mini'+(have>=goal?' hit':'');
+          const lb=document.createElement('span'); lb.textContent=label;
+          const b2=document.createElement('div'); b2.className='lb-bar'; const f=document.createElement('i');
+          f.style.width=Math.min(100,Math.round(100*have/goal))+'%';
+          if(have>=goal) f.style.background='var(--done)';
+          b2.append(f);
+          const num=document.createElement('b'); num.textContent=(have>=goal?'🎯 ':'')+have+'/'+goal;
+          wrapM.append(lb,b2,num); bar.append(wrapM);
+        };
+        mini('Internet', r.sales, gSales);
+        mini('Wireless', r.lines, gLines);
+      } else {
+        bar=document.createElement('div'); bar.className='lb-bar'; const fill=document.createElement('i');
+        fill.style.width=Math.min(100,Math.round(100*r[key]/top))+'%'; bar.append(fill);
+      }
       row.append(rk,mid,sc,bar); list.append(row);
     });
     const missing=rows.map(r=>r.id).filter(id=>!state.names[id]); if(missing.length) ensureNames(missing);

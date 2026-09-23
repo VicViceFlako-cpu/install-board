@@ -1598,6 +1598,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   function renderLeaders(){
     if($('#viewLeaders').hidden) return;
     const [from,to]=lbRange(state.lbPeriod), inR=d=>!!d&&d>=from&&d<=to;
+    const wk=state.lbPeriod==='week', longPeriod=['month','last','all'].includes(state.lbPeriod);
     const by={}, get=id=>by[id]||(by[id]={id,sales:0,installs:0,cancels:0,lines:0});
     let sales=0, installs=0, cancels=0, lines=0;
     (state.installs||[]).forEach(i=>{
@@ -1620,7 +1621,6 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         : '🎯 Weekly goal'+(bits.length?': '+bits.join(' · '):'')+(custom?(bits.length?' (some agents differ)':' set per agent'):'');
     }
     [[sales,'Sales'],[installs,'Installs'],[lines,'Wireless lines'],...(longPeriod?[[installs+cancels?Math.round(100*installs/(installs+cancels))+'%':'—','Install rate']]:[])].forEach(([v,l])=>{ const d=document.createElement('div'); d.className='lb-tot'; const b=document.createElement('b'); b.textContent=v; const sp=document.createElement('span'); sp.textContent=l; d.append(b,sp); tot.append(d); });
-    const wk=state.lbPeriod==='week', longPeriod=['month','last','all'].includes(state.lbPeriod);
     const key=state.lbMetric, other=key==='sales'?'installs':'sales';
     const unit=key==='lines'?['line','lines']:key==='installs'?['install','installs']:['sale','sales'];
     const rows=Object.values(by).filter(r=>r.sales||r.installs||r.cancels||r.lines)

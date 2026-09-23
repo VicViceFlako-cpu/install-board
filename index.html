@@ -829,6 +829,10 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     row('Added', [fmtStamp(i.createdAt), i.createdBy?'by '+personName(i.createdBy):''].filter(Boolean).join(' '));
     sh.append(dl);
     { const link=textLink(i); if(link) sh.append(link); }
+    if(state.canAnnounce){
+      const edit=document.createElement('button'); edit.type='button'; edit.className='btn btn-ghost btn-small'; edit.style.marginTop='14px';
+      edit.textContent='✏️ Edit order'; edit.onclick=()=>openEdit(i.id); sh.append(edit);
+    }
     const hist=Array.isArray(i.history)?i.history:[];
     if(hist.length){
       const t=document.createElement('h3'); t.textContent='Reschedules ('+hist.length+')'; sh.append(t);
@@ -967,6 +971,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
           }
           await state.db.doc('installs/'+ex.id).update(patch); updated.push({...ex,...patch,prev:ex.installDate});
         } else {
+          if(parseISO(d.saleDate)&&parseISO(d.installDate)&&d.installDate<d.saleDate){ const t=d.saleDate; d.saleDate=d.installDate; d.installDate=t; }
           const doc={agentId:d.agentId||'', agent:d.agentId?'':(d.agent||''), saleDate:parseISO(d.saleDate)?d.saleDate:'', installDate:d.installDate, status:'scheduled', createdBy:state.meId||'', createdAt:new Date().toISOString(), ...extra};
           await state.db.collection('installs').add(doc); added.push(doc);
         }
@@ -994,8 +999,14 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const out={};
     const iOrder=idx('order date');
     const dates=lines.slice(iOrder>=0?iOrder:0).filter(l=>/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(l)).map(mdyToISO).filter(Boolean);
-    if(iOrder>=0&&idx('due date')>=0){ out.saleDate=dates[0]||''; out.installDate=dates[1]||''; }
-    else if(idx('due date')>=0){ out.installDate=dates[0]||''; }
+    const iDue=idx('due date');
+    if(iOrder>=0&&iDue>=0){
+      const dueFirst=iDue<iOrder;                    // some pastes list Due Date above Order Date
+      out.saleDate=(dueFirst?dates[1]:dates[0])||'';
+      out.installDate=(dueFirst?dates[0]:dates[1])||'';
+      if(out.saleDate&&out.installDate&&out.installDate<out.saleDate){ const t=out.saleDate; out.saleDate=out.installDate; out.installDate=t; }
+    }
+    else if(iDue>=0){ out.installDate=dates[0]||''; }
     const iAcc=idx('account name');
     if(iAcc>=0){ const n=lines[iAcc+1]; if(n&&!isLabel(n)&&!/\d{5,}/.test(n)) out.customer=n; }
     const iAd=idx('service address'); const adl=iAd>=0?lines[iAd+1]:''; out.address=(adl&&!isLabel(adl)&&/[a-z]/i.test(adl)&&/\d/.test(adl)&&!/^[A-Z]{2}\d{8,14}$/.test(adl))?adl:'';
@@ -2013,6 +2024,58 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     });
     const note=document.createElement('p'); note.className='lb-sub'; note.style.marginTop='8px';
     note.textContent='Blank uses the team default. Enter 0 for no goal.'; box.append(note);
+  }
+
+  // ---------- edit an order (managers) ----------
+  function openEdit(id){
+    const i=state.installs.find(x=>x.id===id); if(!i||!state.canAnnounce) return;
+    state.detailId=null;
+    const wrap=$('#sheet'), sh=wrap.querySelector('.sheet'); sh.innerHTML='';
+    const head=document.createElement('div'); head.className='sheet-head';
+    const h=document.createElement('h2'); h.id='sheetTitle'; h.textContent='Edit order';
+    const x=document.createElement('button'); x.className='sheet-x'; x.type='button'; x.setAttribute('aria-label','Close'); x.textContent='×'; x.onclick=()=>openDetail(id);
+    head.append(h,x); sh.append(head);
+    const form=document.createElement('div'); form.className='team-form';
+    const fields={};
+    const add=(key,label,type,val)=>{
+      const l=document.createElement('label'); l.textContent=label;
+      const inp=document.createElement('input'); inp.type=type||'text'; inp.value=val||'';
+      if(type==='tel'){ inp.inputMode='tel'; }
+      l.append(inp); form.append(l); fields[key]=inp;
+    };
+    add('customer','Customer name','text',i.customer);
+    add('saleDate','Sale date','date',i.saleDate);
+    add('installDate','Install date','date',i.installDate);
+    add('window','Appointment window','text',i.window);
+    add('phone','Phone','tel',fmtPhone(i.phone));
+    add('address','Service address','text',i.address);
+    add('mon','Order # (MON)','text',i.mon);
+    const swap=document.createElement('button'); swap.type='button'; swap.className='btn btn-ghost btn-small';
+    swap.textContent='⇄ Swap sale and install dates';
+    swap.onclick=()=>{ const a=fields.saleDate.value; fields.saleDate.value=fields.installDate.value; fields.installDate.value=a; };
+    form.append(swap);
+    const msg=document.createElement('div'); msg.className='team-msg'; msg.setAttribute('role','status');
+    const acts=document.createElement('div'); acts.className='po-actions';
+    const save=document.createElement('button'); save.type='button'; save.className='btn btn-primary'; save.textContent='Save changes';
+    const cancel=document.createElement('button'); cancel.type='button'; cancel.className='btn btn-ghost'; cancel.textContent='Cancel'; cancel.onclick=()=>openDetail(id);
+    save.onclick=async()=>{
+      const sd=fields.saleDate.value, idt=fields.installDate.value;
+      if(!parseISO(idt)){ msg.className='team-msg err'; msg.textContent='Pick an install date.'; return; }
+      if(sd&&parseISO(sd)&&idt<sd){ msg.className='team-msg err'; msg.textContent='The install date is before the sale date. Use Swap if they got reversed.'; return; }
+      const patch={customer:fields.customer.value.trim(), saleDate:parseISO(sd)?sd:'', installDate:idt,
+        window:fields.window.value.trim(), phone:phoneDigits(fields.phone.value), address:fields.address.value.trim(), mon:fields.mon.value.trim()};
+      if(idt!==i.installDate){
+        const hist=Array.isArray(i.history)?i.history.slice():[];
+        hist.push({from:i.installDate,to:idt,at:new Date().toISOString(),by:state.meId||''});
+        patch.history=hist;
+      }
+      save.disabled=true; save.textContent='Saving…';
+      try{ await state.db.collection('installs').doc(id).update(patch); toast('Order updated'); setTimeout(()=>openDetail(id),150); }
+      catch(e){ msg.className='team-msg err'; msg.textContent=writeErr(e); save.disabled=false; save.textContent='Save changes'; }
+    };
+    acts.append(save,cancel); form.append(acts);
+    sh.append(form,msg);
+    wrap.hidden=false; document.body.style.overflow='hidden'; sh.scrollTop=0;
   }
 
   // ---------- wiring ----------

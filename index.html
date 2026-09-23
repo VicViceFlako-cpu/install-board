@@ -1625,7 +1625,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const tot=$('#lbTotals'); tot.innerHTML='';
     const goalNote=$('#lbGoal');
     if(goalNote){
-      const mine=state.canAnnounce?null:goalFor(state.meId,state.lbMetric);
+      const mine=state.canAnnounce?null:goalFor(state.meId,state.lbMetric==='installs'?'sales':state.lbMetric);
       const gs=goalDefault('sales'), gl=goalDefault('lines');
       const bits=[gs?gs+' internet sales':'', gl?gl+' wireless lines':''].filter(Boolean);
       const custom=Object.values(state.goals||{}).some(g=>g&&(g.sales!=null||g.lines!=null));
@@ -1637,7 +1637,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     [[sales,'Sales'],[installs,'Installs'],[lines,'Wireless lines'],...(longPeriod?[[installs+cancels?Math.round(100*installs/(installs+cancels))+'%':'—','Install rate']]:[])].forEach(([v,l])=>{ const d=document.createElement('div'); d.className='lb-tot'; const b=document.createElement('b'); b.textContent=v; const sp=document.createElement('span'); sp.textContent=l; d.append(b,sp); tot.append(d); });
     const key=state.lbMetric, other=key==='sales'?'installs':'sales';
     const unit=key==='lines'?['line','lines']:key==='installs'?['install','installs']:['sale','sales'];
-    const rows=Object.values(by).filter(r=>r.sales||r.installs||r.cancels||r.lines)
+    if(wk&&state.meId&&!by[state.meId]&&goalFor(state.meId,key)) get(state.meId);
+    const rows=Object.values(by).filter(r=>r.sales||r.installs||r.cancels||r.lines||(wk&&r.id===state.meId&&goalFor(r.id,key)))
       .sort((a,b)=>(b[key]-a[key])||(b[other]-a[other])||agentLabel(a.id).localeCompare(agentLabel(b.id)));
     const list=$('#lbList'); list.innerHTML='';
     if(!rows.length){ const e=document.createElement('p'); e.className='lb-empty'; e.textContent=state.lbPeriod==='today'?'Nothing on the board for today yet.':'No sales or installs in this period yet.'; list.append(e); return; }
@@ -1679,7 +1680,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const {data}=await sb.from('app_settings').select('key,value'); state.settings={}; (data||[]).forEach(r=>state.settings[r.key]=r.value);
     const {data:gs}=await sb.from('agent_goals').select('user_id,goal_sales,goal_lines');
     state.goals={}; (gs||[]).forEach(g=>state.goals[g.user_id]={sales:g.goal_sales,lines:g.goal_lines});
-    ['goalSales','goalLines'].forEach((id,k)=>{ const el=$('#'+id); const key=k?'weekly_goal_lines':'weekly_goal_sales'; if(el&&document.activeElement!==el) el.value=state.settings[key]||''; });
+    if(state.canAnnounce) ['goalSales','goalLines'].forEach((id,k)=>{ const el=$('#'+id); const key=k?'weekly_goal_lines':'weekly_goal_sales'; if(el&&document.activeElement!==el) el.value=state.settings[key]||''; });
     renderGoalList(); renderLeaders();
     renderPayouts(true);
   }
@@ -2209,7 +2210,11 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       $('#annBtn').hidden=!state.canAnnounce; $('#composerIn').classList.toggle('admin',state.canAnnounce);
       const sbtn=$('#saveBtn'); if(sbtn) sbtn.disabled=false;
       setTimeout(()=>{ syncAlerts(); openHash(location.hash); },0);
-      if(state.canAnnounce){ loadSettings(); sb.channel('rt-settings').on('postgres_changes',{event:'*',schema:'public',table:'app_settings'},()=>loadSettings()).subscribe(); }
+      loadSettings();
+      sb.channel('rt-settings')
+        .on('postgres_changes',{event:'*',schema:'public',table:'app_settings'},()=>loadSettings())
+        .on('postgres_changes',{event:'*',schema:'public',table:'agent_goals'},()=>loadSettings())
+        .subscribe();
       // keep teammate names fresh as people join
       sb.channel('rt-profiles').on('postgres_changes',{event:'*',schema:'public',table:'profiles'},async()=>{ await loadProfiles(); state.names={}; ensureNames(Object.keys(state.profiles)); if(state.tab==='chat') renderChat(); }).subscribe();
       ensureNames(Object.keys(state.profiles));

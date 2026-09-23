@@ -174,6 +174,12 @@ button{cursor:pointer}
 .lb-empty{color:var(--muted);text-align:center;padding:28px 10px}
 .po-top{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:12px}
 .po-top label{display:grid;gap:4px;font-size:.88rem;color:var(--muted)}
+.goal-row{display:grid;grid-template-columns:1fr 84px 84px;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.goal-row:first-child{border-top:0}
+.goal-row b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.goal-row input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;text-align:center;min-height:40px;width:100%}
+.goal-head{display:grid;grid-template-columns:1fr 84px 84px;gap:8px;font-size:.75rem;color:var(--muted);text-align:center;margin-bottom:4px}
+.goal-head span:first-child{text-align:left}
 .po-top input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 10px;min-height:42px;width:120px}
 .po-sum{font-weight:600;margin:6px 0 10px}
 .po-agent{border:1px solid var(--line);border-radius:12px;margin-bottom:8px;overflow:hidden}
@@ -207,6 +213,9 @@ button{cursor:pointer}
 .wl-card b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wl-card .sub{color:var(--muted);font-size:.86rem}
 .wl-chip{font-size:.72rem;font-weight:600;padding:3px 8px;border-radius:999px;background:var(--line);white-space:nowrap}
+.wl-chip.warn{background:color-mix(in srgb,var(--danger) 18%,transparent);color:var(--ink)}
+.line-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.hist li.gone b,.hist li.gone a{text-decoration:line-through;opacity:.65}
 .wl-chip.paid{background:color-mix(in srgb,var(--done) 22%,transparent);color:var(--ink)}
 .wl-month{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:16px 0 8px}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:500;opacity:0;pointer-events:none;transition:opacity .2s}
@@ -463,6 +472,7 @@ body.on-chat .wrap{padding-bottom:140px}
         <button type="button" data-m="lines" aria-pressed="false">Rank by lines</button>
       </div>
     </div>
+    <p id="lbGoal" class="po-sum" hidden></p>
     <div id="lbTotals" class="lb-totals"></div>
     <div id="lbList"></div>
     <p class="lb-sub" style="text-align:center;margin-top:10px">Sales and wireless lines count by sale date. Installs and cancellations count by install date.</p>
@@ -474,6 +484,18 @@ body.on-chat .wrap{padding-bottom:140px}
       <p class="note">Installed orders waiting to be paid, by agent. Check them off and tap Mark paid. Agents get an alert when you do.</p>
       <div id="poSum" class="po-sum"></div>
       <div id="poList"></div>
+    </section>
+    <section class="team-sec">
+      <h2>Weekly goals</h2>
+      <p class="note">Weekly targets, Monday to Sunday. Progress shows on the Leaders tab, and everyone gets an alert when an agent hits their goal. Set a team default, then override it for anyone who needs a different number.</p>
+      <div class="po-top">
+        <label>Team default: internet sales<input id="goalSales" type="number" inputmode="numeric" min="0" step="1" placeholder="none"></label>
+        <label>Team default: wireless lines<input id="goalLines" type="number" inputmode="numeric" min="0" step="1" placeholder="none"></label>
+        <button id="goalSave" class="btn btn-ghost btn-small">Save defaults</button>
+      </div>
+      <div id="goalMsg" class="team-msg" role="status"></div>
+      <h3 style="font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:18px 0 6px">Per agent</h3>
+      <div id="goalList"></div>
     </section>
     <section class="team-sec">
       <h2>Export orders</h2>
@@ -1552,8 +1574,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     sh.append(btns);
     const t=document.createElement('h3'); t.textContent='You\'ll get alerts for'; sh.append(t);
     const ul=document.createElement('ul'); ul.className='al-list';
-    const items=['📣 Announcements','💬 Team chat messages, and when someone @mentions you','📡 Your installs today (10 AM reminder)','🗓 Your installs for tomorrow (7 PM reminder)','✅ When someone else updates one of your orders','💰 When a manager adds a sale for you','📱 New wireless sales added for you'];
-    if(state.canAnnounce) items.push('💰 Every new sale, and order updates from agents (managers only)');
+    const items=['🎯 When you hit your weekly goal','📣 Announcements','💬 Team chat messages, and when someone @mentions you','📡 Your installs today (10 AM reminder)','🗓 Your installs for tomorrow (7 PM reminder)','✅ When someone else updates one of your orders','💰 When a manager adds a sale for you','📱 New wireless sales added for you'];
+    if(state.canAnnounce){ items.push('💰 Every new sale, and order updates from agents (managers only)'); items.push('📊 A daily recap at 8 PM (managers only)'); }
     items.forEach(tx=>{ const li=document.createElement('li'); li.textContent=tx; ul.append(li); }); sh.append(ul);
     wrap.hidden=false; document.body.style.overflow='hidden';
   }
@@ -1582,9 +1604,21 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       if(i.status==='installed'&&inR(i.installDate)){ get(i.agentId).installs++; installs++; }
       if(i.status==='cancelled'&&inR(i.installDate)){ get(i.agentId).cancels++; cancels++; }
     });
-    (state.wireless||[]).forEach(w=>{ if(!w.agentId||!inR(w.saleDate)) return; const n=w.lineCount||linesOf(w.id).length; get(w.agentId).lines+=n; lines+=n; });
+    (state.wireless||[]).forEach(w=>{ if(!w.agentId||!inR(w.saleDate)) return; const ls=linesOf(w.id); const n=ls.length?ls.filter(l=>l.status!=='cancelled').length:(w.lineCount||0); if(!n) return; get(w.agentId).lines+=n; lines+=n; });
     const tot=$('#lbTotals'); tot.innerHTML='';
+    const goalNote=$('#lbGoal');
+    if(goalNote){
+      const mine=state.canAnnounce?null:goalFor(state.meId,state.lbMetric);
+      const gs=goalDefault('sales'), gl=goalDefault('lines');
+      const bits=[gs?gs+' internet sales':'', gl?gl+' wireless lines':''].filter(Boolean);
+      const custom=Object.values(state.goals||{}).some(g=>g&&(g.sales!=null||g.lines!=null));
+      goalNote.hidden=!(state.lbPeriod==='week'&&(bits.length||custom||mine));
+      goalNote.textContent=!state.canAnnounce&&mine
+        ? '🎯 Your weekly goal: '+mine+(state.lbMetric==='lines'?' wireless lines':' internet sales')
+        : '🎯 Weekly goal'+(bits.length?': '+bits.join(' · '):'')+(custom?(bits.length?' (some agents differ)':' set per agent'):'');
+    }
     [[sales,'Sales'],[installs,'Installs'],[lines,'Wireless lines'],[installs+cancels?Math.round(100*installs/(installs+cancels))+'%':'—','Install rate']].forEach(([v,l])=>{ const d=document.createElement('div'); d.className='lb-tot'; const b=document.createElement('b'); b.textContent=v; const sp=document.createElement('span'); sp.textContent=l; d.append(b,sp); tot.append(d); });
+    const wk=state.lbPeriod==='week';
     const key=state.lbMetric, other=key==='sales'?'installs':'sales';
     const unit=key==='lines'?['line','lines']:key==='installs'?['install','installs']:['sale','sales'];
     const rows=Object.values(by).filter(r=>r.sales||r.installs||r.cancels||r.lines)
@@ -1604,7 +1638,13 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       sub.textContent=[key==='lines'?r.sales+' internet sold':(key==='sales'?r.installs+' installed':r.sales+' sold'), key!=='lines'&&r.lines?r.lines+' wireless lines':'', r.cancels&&key!=='lines'?r.cancels+' cancelled':'', key==='lines'?'':rate].filter(Boolean).join(' · ');
       mid.append(nm,sub);
       const sc=document.createElement('div'); sc.className='lb-score'; const b=document.createElement('b'); b.textContent=r[key]; const sp=document.createElement('span'); sp.textContent=r[key]===1?unit[0]:unit[1]; sc.append(b,sp);
-      const bar=document.createElement('div'); bar.className='lb-bar'; const fill=document.createElement('i'); fill.style.width=Math.round(100*r[key]/top)+'%'; bar.append(fill);
+      const goal=wk&&key!=='installs'?goalFor(r.id,key):null;
+      if(goal){ const g=document.createElement('div'); g.className='lb-sub'; g.style.gridColumn='2/-1';
+        g.textContent=r[key]>=goal?'🎯 Goal hit — '+r[key]+' of '+goal:r[key]+' of '+goal+' toward this week\'s goal'; mid.append(g); }
+      const bar=document.createElement('div'); bar.className='lb-bar'; const fill=document.createElement('i');
+      fill.style.width=Math.min(100,Math.round(100*r[key]/(goal||top)))+'%';
+      if(goal&&r[key]>=goal) fill.style.background='var(--done)';
+      bar.append(fill);
       row.append(rk,mid,sc,bar); list.append(row);
     });
     const missing=rows.map(r=>r.id).filter(id=>!state.names[id]); if(missing.length) ensureNames(missing);
@@ -1620,6 +1660,10 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   const amtOf=i=>i.payoutAmount!==''&&i.payoutAmount!=null?+i.payoutAmount:rateVal();
   async function loadSettings(){
     const {data}=await sb.from('app_settings').select('key,value'); state.settings={}; (data||[]).forEach(r=>state.settings[r.key]=r.value);
+    const {data:gs}=await sb.from('agent_goals').select('user_id,goal_sales,goal_lines');
+    state.goals={}; (gs||[]).forEach(g=>state.goals[g.user_id]={sales:g.goal_sales,lines:g.goal_lines});
+    ['goalSales','goalLines'].forEach((id,k)=>{ const el=$('#'+id); const key=k?'weekly_goal_lines':'weekly_goal_sales'; if(el&&document.activeElement!==el) el.value=state.settings[key]||''; });
+    renderGoalList(); renderLeaders();
     renderPayouts(true);
   }
   function renderPayouts(force){
@@ -1629,7 +1673,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const paid=(state.installs||[]).filter(i=>i.payoutStatus==='paid'&&i.agentId);
     const saleOf={}; (state.wireless||[]).forEach(w=>saleOf[w.id]=w);
     const wl=(state.wlines||[]).map(l=>({...l,sale:saleOf[l.saleId]})).filter(l=>l.sale&&l.sale.agentId);
-    const wlUnpaid=wl.filter(l=>l.payoutStatus!=='paid'), wlPaid=wl.filter(l=>l.payoutStatus==='paid');
+    const wlUnpaid=wl.filter(l=>l.payoutStatus!=='paid'&&l.status==='active'), wlPaid=wl.filter(l=>l.payoutStatus==='paid');
     const ids=[...new Set([...unpaid.map(i=>i.agentId),...paid.map(i=>i.agentId),...wl.map(l=>l.sale.agentId)])];
     const sumBits=[unpaid.length?unpaid.length+(unpaid.length===1?' install':' installs'):'', wlUnpaid.length?wlUnpaid.length+(wlUnpaid.length===1?' wireless line':' wireless lines'):''].filter(Boolean);
     $('#poSum').textContent=sumBits.length? sumBits.join(' · ')+' unpaid' : 'Everyone is paid up. 🎉';
@@ -1800,16 +1844,21 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     list.forEach(w=>{
       const d=parseISO(w.saleDate), m=d?d.toLocaleDateString('en-US',{month:'long',year:'numeric'}):'';
       if(m!==month){ month=m; const h=document.createElement('p'); h.className='wl-month'; h.textContent=m; box.append(h); }
-      const ls=linesOf(w.id), paid=ls.filter(l=>l.payoutStatus==='paid').length;
+      const ls=linesOf(w.id), live=ls.filter(l=>l.status!=='cancelled'), paid=live.filter(l=>l.payoutStatus==='paid').length;
+      const pending=live.filter(l=>l.status==='pending').length, cancelled=ls.length-live.length;
       const card=document.createElement('div'); card.className='wl-card';
-      const n=document.createElement('div'); n.className='n'; n.textContent=w.lineCount||ls.length; const sm=document.createElement('small'); sm.textContent=(w.lineCount||ls.length)===1?'line':'lines'; n.append(sm);
+      const shown=live.length||ls.length||w.lineCount;
+      const n=document.createElement('div'); n.className='n'; n.textContent=shown; const sm=document.createElement('small'); sm.textContent=shown===1?'line':'lines'; n.append(sm);
       const mid=document.createElement('div'); mid.style.minWidth='0';
       const b=document.createElement('b'); b.textContent=w.customer||'Wireless sale';
       const sub=document.createElement('div'); sub.className='sub'; sub.textContent=agentLabel(w.agentId)+' · '+fmtShort(w.saleDate);
       mid.append(b,sub);
       if(followupDue(w)){ const f=document.createElement('span'); f.className='wl-flag'; f.textContent=shipLines(w).devices.length?'📦 Check in':'📮 Check in'; sub.append(' '); sub.append(f); }
-      const chip=document.createElement('span'); chip.className='wl-chip'+(ls.length&&paid===ls.length?' paid':'');
-      chip.textContent=!ls.length?'—':paid===ls.length?'Paid':paid?paid+'/'+ls.length+' paid':'Unpaid';
+      if(cancelled){ const c=document.createElement('span'); c.className='wl-flag'; c.style.background='color-mix(in srgb,var(--danger) 16%,transparent)'; c.textContent=cancelled+' cancelled'; sub.append(' '); sub.append(c); }
+      const chip=document.createElement('span');
+      if(pending){ chip.className='wl-chip'; chip.textContent=pending+' pending'; }
+      else if(!live.length){ chip.className='wl-chip warn'; chip.textContent='Cancelled'; }
+      else { chip.className='wl-chip'+(paid===live.length?' paid':''); chip.textContent=paid===live.length?'Paid':paid?paid+'/'+live.length+' paid':'Active'; }
       card.append(n,mid,chip); card.onclick=()=>openWireless(w.id); box.append(card);
     });
   }
@@ -1822,9 +1871,10 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const h=document.createElement('h2'); h.id='sheetTitle'; h.textContent=w.customer||'Wireless sale';
     const x=document.createElement('button'); x.className='sheet-x'; x.type='button'; x.setAttribute('aria-label','Close'); x.textContent='×'; x.onclick=closeDetail;
     head.append(h,x); sh.append(head);
-    const ls=linesOf(w.id), paid=ls.filter(l=>l.payoutStatus==='paid').length;
-    const pill=document.createElement('span'); pill.className='sheet-pill'+(ls.length&&paid===ls.length?' done':'');
-    pill.textContent=(w.lineCount||ls.length)+((w.lineCount||ls.length)===1?' line':' lines')+' · '+(!ls.length?'no numbers':paid===ls.length?'all paid':paid?paid+' of '+ls.length+' paid':'unpaid');
+    const ls=linesOf(w.id), live=ls.filter(l=>l.status!=='cancelled');
+    const act=live.filter(l=>l.status==='active').length, pend=live.filter(l=>l.status==='pending').length, paid=live.filter(l=>l.payoutStatus==='paid').length;
+    const pill=document.createElement('span'); pill.className='sheet-pill'+(live.length&&act===live.length?' done':!live.length?' x':'');
+    pill.textContent=[live.length+(live.length===1?' line':' lines'), pend?pend+' pending':'', act?act+' active':'', ls.length-live.length?(ls.length-live.length)+' cancelled':''].filter(Boolean).join(' · ');
     sh.append(pill);
     const dl=document.createElement('dl'); dl.className='dl';
     const row=(l,v)=>{ if(v==null||v==='') return; const dt=document.createElement('dt'); dt.textContent=l; const dd=document.createElement('dd'); if(v instanceof Node) dd.append(v); else dd.textContent=v; dl.append(dt,dd); };
@@ -1835,10 +1885,26 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const t=document.createElement('h3'); t.textContent='Phone numbers'; sh.append(t);
     const ul=document.createElement('ul'); ul.className='hist';
     ls.forEach((l,idx)=>{
-      const li=document.createElement('li');
+      const li=document.createElement('li'); if(l.status==='cancelled') li.className='gone';
       const a=document.createElement('a'); a.href='tel:'+l.phone; a.textContent='Line '+(idx+1)+': '+fmtPhone(l.phone); a.style.color='var(--signal)';
-      const sm=document.createElement('small'); sm.textContent=(l.device==='new'?'New device':'BYOD · '+(l.sim==='physical'?'physical SIM':'eSIM'))+' · '+(l.payoutStatus==='paid'?'paid '+fmtStamp(l.paidAt):'not paid yet');
-      li.append(a,sm); ul.append(li);
+      const kind=l.device==='new'?'New device':'BYOD · '+(l.sim==='physical'?'physical SIM':'eSIM');
+      const stTxt=l.status==='active'?'Active':l.status==='cancelled'?'Cancelled':'Pending activation';
+      const sm=document.createElement('small'); sm.textContent=kind+' · '+stTxt+' · '+(l.payoutStatus==='paid'?'paid '+fmtStamp(l.paidAt):'not paid yet');
+      li.append(a,sm);
+      if(wlCanAct(w)){
+        const acts=document.createElement('div'); acts.className='line-acts';
+        const mk=(label,to)=>{ const b=document.createElement('button'); b.type='button'; b.className='btn btn-ghost btn-small'; b.textContent=label;
+          b.onclick=async()=>{ b.disabled=true;
+            const {error}=await sb.from('wireless_lines').update({status:to,status_at:new Date().toISOString(),status_by:state.meId}).eq('id',l.id);
+            if(error){ toast(writeErr(error)); b.disabled=false; return; }
+            toast(to==='active'?'Line active':to==='cancelled'?'Line cancelled':'Back to pending'); setTimeout(()=>openWireless(w.id),150); };
+          acts.append(b); };
+        if(l.status!=='active') mk('Active','active');
+        if(l.status!=='cancelled') mk('Cancelled','cancelled');
+        if(l.status!=='pending') mk('Pending','pending');
+        li.append(acts);
+      }
+      ul.append(li);
     });
     sh.append(ul);
     const ship=shipLines(w), shipping=ship.devices.length+ship.sims.length;
@@ -1863,7 +1929,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     }
     if(state.canAnnounce){
       const acts=document.createElement('div'); acts.className='po-actions';
-      const unpaid=ls.filter(l=>l.payoutStatus!=='paid');
+      const unpaid=ls.filter(l=>l.payoutStatus!=='paid'&&l.status==='active');
       if(unpaid.length){ const b=document.createElement('button'); b.type='button'; b.className='btn btn-primary btn-small'; b.textContent='Mark '+unpaid.length+(unpaid.length===1?' line paid':' lines paid');
         b.onclick=async()=>{ b.disabled=true; const {error}=await sb.rpc('mark_lines_paid',{p_ids:unpaid.map(l=>l.id),p_paid:true}); toast(error?'Couldn\'t save. Try again.':'Marked paid'); closeDetail(); }; acts.append(b); }
       const del=document.createElement('button'); del.type='button'; del.className='btn btn-ghost btn-small'; del.textContent='Delete sale';
@@ -1875,7 +1941,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
   // ---------- new-device follow-up ----------
   function addBusinessDays(dateStr,n){ const d=parseISO(dateStr); if(!d) return null; let left=n; while(left>0){ d.setDate(d.getDate()+1); const w=d.getDay(); if(w!==0&&w!==6) left--; } return d; }
-  function shipLines(w){ const ls=linesOf(w.id); return {devices:ls.filter(l=>l.device==='new'), sims:ls.filter(l=>l.device==='byod'&&l.sim==='physical')}; }
+  function shipLines(w){ const ls=linesOf(w.id).filter(l=>l.status!=='cancelled'); return {devices:ls.filter(l=>l.device==='new'), sims:ls.filter(l=>l.device==='byod'&&l.sim==='physical')}; }
   function followupDue(w){
     const {devices,sims}=shipLines(w);
     if((!devices.length&&!sims.length)||w.deviceFollowupAt) return false;
@@ -1898,6 +1964,51 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     catch(e){ toast(writeErr(e)); }
   }
 
+  $('#goalSave').onclick=async()=>{
+    const msg=$('#goalMsg'), rows=[['weekly_goal_sales',$('#goalSales').value.trim()],['weekly_goal_lines',$('#goalLines').value.trim()]];
+    for(const [,v] of rows){ if(v!==''&&(isNaN(+v)||+v<0)){ tmSay(msg,'Enter whole numbers, like 5.','err'); return; } }
+    const {error}=await sb.from('app_settings').upsert(rows.map(([key,value])=>({key,value:value===''?'':String(Math.round(+value)),updated_at:new Date().toISOString()})));
+    if(error){ tmSay(msg,'Couldn\'t save. Try again.','err'); return; }
+    tmSay(msg,'Goals saved.','ok'); loadSettings();
+  };
+
+  state.goals={};
+  function goalDefault(kind){ const v=state.settings[kind==='lines'?'weekly_goal_lines':'weekly_goal_sales']; return v&&+v>0?+v:null; }
+  function goalFor(id,kind){ const g=state.goals[id]; const own=g?(kind==='lines'?g.lines:g.sales):null; return own!=null&&own>0?own:(own===0?null:goalDefault(kind)); }
+  function renderGoalList(){
+    const box=$('#goalList'); if(!box||!state.canAnnounce) return;
+    if(box.contains(document.activeElement)) return;
+    box.innerHTML='';
+    const head=document.createElement('div'); head.className='goal-head';
+    ['Agent','Sales','Lines'].forEach(t=>{ const sp=document.createElement('span'); sp.textContent=t; head.append(sp); }); box.append(head);
+    const ids=Object.keys(state.profiles||{}).sort((a,b)=>agentLabel(a).localeCompare(agentLabel(b)));
+    ids.forEach(id=>{
+      const row=document.createElement('div'); row.className='goal-row';
+      const nm=document.createElement('b'); nm.textContent=agentLabel(id)+(id===state.meId?' (you)':''); row.append(nm);
+      ['sales','lines'].forEach(kind=>{
+        const i=document.createElement('input'); i.type='number'; i.inputMode='numeric'; i.min='0'; i.step='1';
+        const own=(state.goals[id]||{})[kind];
+        i.value=own==null?'':own;
+        const def=goalDefault(kind); i.placeholder=def!=null?String(def):'none';
+        i.setAttribute('aria-label',(kind==='sales'?'Weekly sales goal for ':'Weekly lines goal for ')+agentLabel(id));
+        i.onchange=async()=>{
+          const v=i.value.trim();
+          if(v!==''&&(isNaN(+v)||+v<0)){ toast('Enter a whole number.'); return; }
+          const payload={user_id:id,updated_at:new Date().toISOString()}; payload['goal_'+kind]=v===''?null:Math.round(+v);
+          const other=kind==='sales'?'lines':'sales'; const ov=(state.goals[id]||{})[other]; payload['goal_'+other]=ov==null?null:ov;
+          const {error}=await sb.from('agent_goals').upsert(payload);
+          if(error){ toast('Couldn\'t save. Try again.'); return; }
+          state.goals[id]=Object.assign(state.goals[id]||{},{[kind]:v===''?null:Math.round(+v)});
+          toast('Goal saved'); renderLeaders();
+        };
+        row.append(i);
+      });
+      box.append(row);
+    });
+    const note=document.createElement('p'); note.className='lb-sub'; note.style.marginTop='8px';
+    note.textContent='Blank uses the team default. Enter 0 for no goal.'; box.append(note);
+  }
+
   // ---------- wiring ----------
   $('#uploadBtn').onclick=()=>{ clearShot(); state.pendingCredit=state.meId||''; openPaste(); };
   $('#manualBtn').onclick=()=>{ clearShot(); openReview([{agentId:state.meId||'',agent:'',saleDate:todayISO(),installDate:''}],{title:'Add install',hint:'Enter the dates, then save.'}); ensureNames([state.meId]); };
@@ -1915,7 +2026,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     messages:{authorId:'author_id',text:'text',imageId:'image_path',mentions:'mentions',kind:'kind',createdAt:'created_at'},
     announcements:{authorId:'author_id',text:'text',mentions:'mentions',createdAt:'created_at'},
     wireless_sales:{agentId:'agent_id',customer:'customer',saleDate:'sale_date',lineCount:'line_count',createdBy:'created_by',createdAt:'created_at',deviceFollowupAt:'device_followup_at'},
-    wireless_lines:{saleId:'sale_id',phone:'phone',device:'device',sim:'sim',payoutStatus:'payout_status',paidAt:'paid_at',paidBy:'paid_by',createdAt:'created_at'}
+    wireless_lines:{saleId:'sale_id',phone:'phone',device:'device',sim:'sim',status:'status',statusAt:'status_at',statusBy:'status_by',payoutStatus:'payout_status',paidAt:'paid_at',paidBy:'paid_by',createdAt:'created_at'}
   };
   const NULLABLE=new Set(['agent_id','sale_date','mon','created_by','status_by','status_at','image_path','paid_at','paid_by','payout_amount']);
   function toRow(table,obj){ const map=COLS[table], row={}; for(const k in obj){ const c=map[k]; if(!c) continue; let v=obj[k]; if(v===''&&NULLABLE.has(c)) v=null; if(c==='kind'&&!v) v='chat'; row[c]=v; } return row; }

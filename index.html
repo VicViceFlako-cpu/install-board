@@ -1002,16 +1002,16 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const idx=lab=>low.findIndex(l=>l===lab);
     const after=(lab,test)=>{ const i=idx(lab); if(i<0) return ''; for(let k=i+1;k<lines.length;k++){ if(isLabel(lines[k])) continue; if(!test||test(lines[k])) return lines[k]; } return ''; };
     const out={};
-    const iOrder=idx('order date');
-    const dates=lines.slice(iOrder>=0?iOrder:0).filter(l=>/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(l)).map(mdyToISO).filter(Boolean);
-    const iDue=idx('due date');
-    if(iOrder>=0&&iDue>=0){
-      const dueFirst=iDue<iOrder;                    // some pastes list Due Date above Order Date
-      out.saleDate=(dueFirst?dates[1]:dates[0])||'';
-      out.installDate=(dueFirst?dates[0]:dates[1])||'';
-      if(out.saleDate&&out.installDate&&out.installDate<out.saleDate){ const t=out.saleDate; out.saleDate=out.installDate; out.installDate=t; }
+    // Dates: the paste interleaves labels and values, and the order varies. Take every date
+    // in the text, then read them chronologically: earliest = sale (Order Date), latest = install (Due Date).
+    const iOrder=idx('order date'), iDue=idx('due date');
+    const allDates=[...new Set(lines.filter(l=>/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(l)).map(mdyToISO).filter(Boolean))].sort();
+    if(allDates.length>=2){ out.saleDate=allDates[0]; out.installDate=allDates[allDates.length-1]; }
+    else if(allDates.length===1){
+      // only one date: it's the install date unless the paste only shows an order date
+      if(iDue>=0||iOrder<0) out.installDate=allDates[0];
+      else out.saleDate=allDates[0];
     }
-    else if(iDue>=0){ out.installDate=dates[0]||''; }
     const iAcc=idx('account name');
     if(iAcc>=0){ const n=lines[iAcc+1]; if(n&&!isLabel(n)&&!/\d{5,}/.test(n)) out.customer=n; }
     const iAd=idx('service address'); const adl=iAd>=0?lines[iAd+1]:''; out.address=(adl&&!isLabel(adl)&&/[a-z]/i.test(adl)&&/\d/.test(adl)&&!/^[A-Z]{2}\d{8,14}$/.test(adl))?adl:'';

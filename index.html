@@ -152,7 +152,9 @@ button{cursor:pointer}
 .tabs{display:flex;gap:1px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .tabs::-webkit-scrollbar{display:none}
 .tabs .tab{flex:1 1 auto;min-width:0;padding:0 4px;font-size:.88rem;white-space:nowrap}
-.tabs.five .tab{font-size:.76rem;padding:0 2px}
+.tabs .tab-link{display:flex;align-items:center;justify-content:center;text-decoration:none;color:var(--muted)}
+.tabs .tab-link:active{opacity:.7}
+.tabs.five .tab{font-size:.72rem;padding:0 2px}
 @media (max-width:360px){.tabs.five .tab{font-size:.72rem}}
 .lb-controls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
 .seg{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:3px;gap:2px;flex:1 1 auto}
@@ -395,6 +397,7 @@ body.on-chat .wrap{padding-bottom:140px}
     <button class="tab" role="tab" id="tabWireless" aria-selected="false">Wireless</button>
     <button class="tab" role="tab" id="tabChat" aria-selected="false">Chat<span id="unread" class="badge" hidden></span></button>
     <button class="tab" role="tab" id="tabLeaders" aria-selected="false">Leaders</button>
+    <a class="tab tab-link" id="tabPortal" href="https://www22.verizon.com/CoFEE/Content/PreOrderingD2D/SSOLogin/Login.aspx" target="_blank" rel="noopener">Order ↗</a>
   </nav>
 
   <section id="pinned" class="pinned" hidden></section>

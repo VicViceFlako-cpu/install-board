@@ -149,9 +149,11 @@ button{cursor:pointer}
 .tag.mgr{background:color-mix(in srgb,var(--signal) 20%,transparent)}
 .tag.off{background:rgba(180,35,24,.16);color:var(--danger)}
 .person.off .pn,.person.off .pe{opacity:.6}
-.tabs{display:flex;gap:2px}
-.tabs .tab{flex:1 1 0;min-width:0;padding:0 2px;font-size:.9rem;white-space:nowrap}
-.tabs.five .tab{font-size:.8rem}
+.tabs{display:flex;gap:1px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tabs .tab{flex:1 1 auto;min-width:0;padding:0 4px;font-size:.88rem;white-space:nowrap}
+.tabs.five .tab{font-size:.76rem;padding:0 2px}
+@media (max-width:360px){.tabs.five .tab{font-size:.72rem}}
 .lb-controls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
 .seg{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:3px;gap:2px;flex:1 1 auto}
 .seg button{flex:1;border:0;background:none;border-radius:8px;min-height:36px;font:inherit;font-size:.8rem;font-weight:600;color:var(--muted);padding:0 6px;white-space:nowrap}
@@ -475,7 +477,7 @@ body.on-chat .wrap{padding-bottom:140px}
     <p id="lbGoal" class="po-sum" hidden></p>
     <div id="lbTotals" class="lb-totals"></div>
     <div id="lbList"></div>
-    <p class="lb-sub" style="text-align:center;margin-top:10px">Sales and wireless lines count by sale date. Installs and cancellations count by install date.</p>
+    <p class="lb-sub" style="text-align:center;margin-top:10px">Sales and wireless lines count by the date they were sold. Installs completed and cancellations count by install date, so they usually belong to earlier sales.</p>
   </div>
 
   <div id="viewTeam" hidden>
@@ -1617,8 +1619,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         ? '🎯 Your weekly goal: '+mine+(state.lbMetric==='lines'?' wireless lines':' internet sales')
         : '🎯 Weekly goal'+(bits.length?': '+bits.join(' · '):'')+(custom?(bits.length?' (some agents differ)':' set per agent'):'');
     }
-    [[sales,'Sales'],[installs,'Installs'],[lines,'Wireless lines'],[installs+cancels?Math.round(100*installs/(installs+cancels))+'%':'—','Install rate']].forEach(([v,l])=>{ const d=document.createElement('div'); d.className='lb-tot'; const b=document.createElement('b'); b.textContent=v; const sp=document.createElement('span'); sp.textContent=l; d.append(b,sp); tot.append(d); });
-    const wk=state.lbPeriod==='week';
+    [[sales,'Sales'],[installs,'Installs'],[lines,'Wireless lines'],...(longPeriod?[[installs+cancels?Math.round(100*installs/(installs+cancels))+'%':'—','Install rate']]:[])].forEach(([v,l])=>{ const d=document.createElement('div'); d.className='lb-tot'; const b=document.createElement('b'); b.textContent=v; const sp=document.createElement('span'); sp.textContent=l; d.append(b,sp); tot.append(d); });
+    const wk=state.lbPeriod==='week', longPeriod=['month','last','all'].includes(state.lbPeriod);
     const key=state.lbMetric, other=key==='sales'?'installs':'sales';
     const unit=key==='lines'?['line','lines']:key==='installs'?['install','installs']:['sale','sales'];
     const rows=Object.values(by).filter(r=>r.sales||r.installs||r.cancels||r.lines)
@@ -1634,8 +1636,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       const mid=document.createElement('div'); mid.style.minWidth='0';
       const nm=document.createElement('div'); nm.className='lb-name'; nm.textContent=agentLabel(r.id)+(r.id===state.meId?' (you)':'');
       const sub=document.createElement('div'); sub.className='lb-sub';
-      const rate=r.installs+r.cancels?Math.round(100*r.installs/(r.installs+r.cancels))+'% install rate':'';
-      sub.textContent=[key==='lines'?r.sales+' internet sold':(key==='sales'?r.installs+' installed':r.sales+' sold'), key!=='lines'&&r.lines?r.lines+' wireless lines':'', r.cancels&&key!=='lines'?r.cancels+' cancelled':'', key==='lines'?'':rate].filter(Boolean).join(' · ');
+      const rate=longPeriod&&r.installs+r.cancels?Math.round(100*r.installs/(r.installs+r.cancels))+'% install rate':'';
+      const doneWord=r.installs===1?'1 install completed':r.installs+' installs completed';
+      sub.textContent=[key==='lines'?r.sales+' internet sold':(key==='sales'?doneWord:r.sales+' sold'), key!=='lines'&&r.lines?r.lines+(r.lines===1?' wireless line':' wireless lines'):'', r.cancels&&key!=='lines'?r.cancels+' cancelled':'', key==='lines'?'':rate].filter(Boolean).join(' · ');
       mid.append(nm,sub);
       const sc=document.createElement('div'); sc.className='lb-score'; const b=document.createElement('b'); b.textContent=r[key]; const sp=document.createElement('span'); sp.textContent=r[key]===1?unit[0]:unit[1]; sc.append(b,sp);
       const goal=wk&&key!=='installs'?goalFor(r.id,key):null;

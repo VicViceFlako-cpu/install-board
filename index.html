@@ -2193,6 +2193,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       sc.onload=()=>res(window.XLSX); sc.onerror=()=>rej(new Error('Couldn\'t load the spreadsheet reader. Check your connection.')); document.head.append(sc); });
   }
   const norm=v=>String(v==null?'':v).trim();
+  // the report masks most names as "VERIZON CUSTOMER" — prefer the name on the board
+  const genericName=n=>!n||/^(verizon\s+)?customer$/i.test(n.trim());
   // wireless rows repeat per commission type; keep the plan name, drop the spiff/base rows
   const isSpiffish=p=>/spiff/i.test(p)||/^smartphone$/i.test(p.trim());
   const planTitle=p=>p.replace(/\s+/g,' ').trim().toLowerCase().replace(/\b([a-z])/g,(m,c)=>c.toUpperCase());
@@ -2261,7 +2263,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
           if(!i){ addMissing(mon,who); return; }
           item.board_id=i.id;
           if(i.agentId&&i.agentId!==item.agent_id){ item.credit_note=agentName(i); item.agent_id=i.agentId; }
-          if(!item.customer) item.customer=i.customer||'';
+          if(i.customer&&genericName(item.customer)) item.customer=i.customer;
           item.risk=riskOf(i)||'';
           (kind==='cb'?plan.installsCb:plan.installsPaid).set(i.id,{label:i.customer||mon});
           if(kind==='cb') plan.installsPaid.delete(i.id);
@@ -2271,7 +2273,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         if(ph.length===10){
           const ls=byPhone[ph];
           if(!ls||!ls.length){ addMissing(fmtPhone(ph),who); return; }
-          { const sale0=saleOf[(ls[0]||{}).saleId]||{}; if(sale0.agentId&&sale0.agentId!==item.agent_id){ item.credit_note=agentLabel(sale0.agentId); item.agent_id=sale0.agentId; } if(!item.customer) item.customer=sale0.customer||''; }
+          { const sale0=saleOf[(ls[0]||{}).saleId]||{}; if(sale0.agentId&&sale0.agentId!==item.agent_id){ item.credit_note=agentLabel(sale0.agentId); item.agent_id=sale0.agentId; } if(sale0.customer&&genericName(item.customer)) item.customer=sale0.customer; }
           ls.forEach(l=>{ const sale=saleOf[l.saleId]||{};
             (kind==='cb'?plan.linesCb:plan.linesPaid).set(l.id,{label:(sale.customer||'Wireless')+' · '+fmtPhone(l.phone)});
             if(kind==='cb') plan.linesPaid.delete(l.id); });
@@ -2438,15 +2440,17 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       const ul=document.createElement('ul'); ul.className='hist';
       weeks[k].forEach(r=>{
         const li=document.createElement('li'); li.className='tappable';
-        const b=document.createElement('b'); b.textContent=r.customer||r.doc_num||'Order';
+        const order0=r.kind==='wireless'?null:(state.installs||[]).find(x=>(x.mon||'').toUpperCase()===(r.doc_num||'').toUpperCase());
+        const wl0=r.kind==='wireless'?(state.wlines||[]).find(x=>digits10(x.phone)===digits10(r.doc_num)):null;
+        const wlSale=wl0?(state.wireless||[]).find(w=>w.id===wl0.saleId):null;
+        const boardName=(order0&&order0.customer)||(wlSale&&wlSale.customer)||'';
+        const shown=(genericName(r.customer)&&boardName)?boardName:(r.customer||r.doc_num||'Order');
+        const b=document.createElement('b'); b.textContent=shown;
         if(r.risk){ b.append(' '); b.append(riskTag(r.risk)); }
         const sm=document.createElement('small');
         sm.textContent=[r.kind==='wireless'?fmtPhone(r.doc_num):r.doc_num, r.product, r.risk?'reduced commission':''].filter(Boolean).join(' · ');
         li.append(b,sm);
-        const order=r.kind==='wireless'
-          ? null
-          : (state.installs||[]).find(x=>(x.mon||'').toUpperCase()===(r.doc_num||'').toUpperCase());
-        const wline=r.kind==='wireless' ? (state.wlines||[]).find(x=>digits10(x.phone)===digits10(r.doc_num)) : null;
+        const order=order0, wline=wl0;
         let more=null;
         li.onclick=()=>{
           if(more){ more.remove(); more=null; li.classList.remove('open'); return; }

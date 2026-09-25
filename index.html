@@ -2219,7 +2219,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       await loadReportNames();
       const byName={}; Object.entries(state.profiles||{}).forEach(([id,p])=>{ const n=nameKey(p.full_name); if(n) byName[n]=id; });
       Object.entries(state.reportNames||{}).forEach(([k,v])=>{ if(v.userId) byName[k]=v.userId; });
-      const unknownNames=new Set(), itemsBy=new Map();
+      const unknownNames=new Set(), itemsBy=new Map(), missSeen=new Set();
+      const addMissing=(doc,who)=>{ const k=doc+'|'+who; if(missSeen.has(k)) return; missSeen.add(k); missing.push({doc,who}); };
       const xlDate=v=>{ if(!v) return ''; if(v instanceof Date) return iso(v);
         const m=norm(v).match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/); if(!m) return '';
         const y=m[3].length===2?'20'+m[3]:m[3]; return y+'-'+String(+m[1]).padStart(2,'0')+'-'+String(+m[2]).padStart(2,'0'); };
@@ -2252,7 +2253,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         }
         if(/^[A-Z]{2}\d{6,}$/.test(mon)){
           const i=byMon[mon];
-          if(!i){ missing.push({doc:mon,who}); return; }
+          if(!i){ addMissing(mon,who); return; }
           item.board_id=i.id;
           if(i.agentId&&i.agentId!==item.agent_id){ item.credit_note=agentName(i); item.agent_id=i.agentId; }
           if(!item.customer) item.customer=i.customer||'';
@@ -2264,14 +2265,14 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         const ph=digits10(doc);
         if(ph.length===10){
           const ls=byPhone[ph];
-          if(!ls||!ls.length){ missing.push({doc:fmtPhone(ph),who}); return; }
+          if(!ls||!ls.length){ addMissing(fmtPhone(ph),who); return; }
           { const sale0=saleOf[(ls[0]||{}).saleId]||{}; if(sale0.agentId&&sale0.agentId!==item.agent_id){ item.credit_note=agentLabel(sale0.agentId); item.agent_id=sale0.agentId; } if(!item.customer) item.customer=sale0.customer||''; }
           ls.forEach(l=>{ const sale=saleOf[l.saleId]||{};
             (kind==='cb'?plan.linesCb:plan.linesPaid).set(l.id,{label:(sale.customer||'Wireless')+' · '+fmtPhone(l.phone)});
             if(kind==='cb') plan.linesPaid.delete(l.id); });
           return;
         }
-        missing.push({doc,who});
+        addMissing(doc,who);
       });
       const drop=(m,st,arr)=>{ [...m.keys()].forEach(id=>{ const rec=arr.find(x=>x.id===id);
         if(rec&&rec.payoutStatus===st){ m.delete(id); already.push(1); } }); };

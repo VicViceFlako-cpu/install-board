@@ -2229,8 +2229,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         if(!doc||!norm(r.Status)) return;
         used++;
         const kind=payRowKind(r), who=norm(r.CustomerName)||norm(r.SalesAgentName)||doc, mon=doc.toUpperCase();
-        const agentName=norm(r.SalesAgentName), matchedAgent=byName[nameKey(agentName)]||'';
-        if(agentName&&!matchedAgent) unknownNames.add(agentName);
+        const repName=norm(r.SalesAgentName), matchedAgent=byName[nameKey(repName)]||'';
+        if(repName&&!matchedAgent) unknownNames.add(repName);
         const rowKind=/^[A-Z]{2}\d{6,}$/.test(mon)?'internet':(digits10(doc).length===10?'wireless':'other');
         const payDate=xlDate(r.PaymentDate), prod=norm(r.Product)||norm(r.Program);
         // one statement line per order or per phone number, however many commission rows it has
@@ -2244,7 +2244,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
           if(!item.customer) item.customer=norm(r.CustomerName);
           if(!item.agent_id&&matchedAgent) item.agent_id=matchedAgent;
         } else {
-          item={agent_name:agentName, agent_id:matchedAgent, payment_date:payDate,
+          item={agent_name:repName, agent_id:matchedAgent, payment_date:payDate,
             doc_num:rowKind==='wireless'?digits10(doc):doc, customer:norm(r.CustomerName), product:prod,
             kind:rowKind, outcome:kind==='cb'?'chargeback':'paid', amount:norm(r.PaidAmount), risk:''};
           item.product=bestProduct(item.product,'',rowKind);

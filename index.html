@@ -247,6 +247,11 @@ button{cursor:pointer}
 .wl-chip.warn{background:color-mix(in srgb,var(--danger) 18%,transparent);color:var(--ink)}
 .line-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .hist li.gone b,.hist li.gone a{text-decoration:line-through;opacity:.65}
+.hist li.tappable{cursor:pointer}
+.hist li.tappable b::after{content:' ›';color:var(--muted)}
+.hist li.open b::after{content:' ⌄'}
+.pay-more{margin-top:8px;display:grid;gap:6px}
+.pay-more .dl{margin:0}
 .wl-chip.paid{background:color-mix(in srgb,var(--done) 22%,transparent);color:var(--ink)}
 .wl-month{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:16px 0 8px}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:500;opacity:0;pointer-events:none;transition:opacity .2s}
@@ -2432,12 +2437,51 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       body.append(head2);
       const ul=document.createElement('ul'); ul.className='hist';
       weeks[k].forEach(r=>{
-        const li=document.createElement('li');
+        const li=document.createElement('li'); li.className='tappable';
         const b=document.createElement('b'); b.textContent=r.customer||r.doc_num||'Order';
         if(r.risk){ b.append(' '); b.append(riskTag(r.risk)); }
         const sm=document.createElement('small');
         sm.textContent=[r.kind==='wireless'?fmtPhone(r.doc_num):r.doc_num, r.product, r.risk?'reduced commission':''].filter(Boolean).join(' · ');
-        li.append(b,sm); ul.append(li);
+        li.append(b,sm);
+        const order=r.kind==='wireless'
+          ? null
+          : (state.installs||[]).find(x=>(x.mon||'').toUpperCase()===(r.doc_num||'').toUpperCase());
+        const wline=r.kind==='wireless' ? (state.wlines||[]).find(x=>digits10(x.phone)===digits10(r.doc_num)) : null;
+        let more=null;
+        li.onclick=()=>{
+          if(more){ more.remove(); more=null; li.classList.remove('open'); return; }
+          li.classList.add('open');
+          more=document.createElement('div'); more.className='pay-more';
+          const dl=document.createElement('dl'); dl.className='dl';
+          const row=(l,v)=>{ if(!v) return; const dt=document.createElement('dt'); dt.textContent=l; const dd=document.createElement('dd'); if(v instanceof Node) dd.append(v); else dd.textContent=v; dl.append(dt,dd); };
+          row('Type', r.kind==='wireless'?'Wireless line':r.kind==='internet'?'Internet':'Other');
+          row(r.kind==='wireless'?'Phone':'Order # (MON)', r.kind==='wireless'?fmtPhone(r.doc_num):r.doc_num);
+          row('Plan', r.product);
+          row('Pay date', r.payment_date?fmtLong(r.payment_date):'');
+          if(r.risk) row('Commission', (r.risk==='high'?'High':'Medium')+' risk — reduced');
+          if(order){
+            row('Sold', order.saleDate?fmtLong(order.saleDate):'');
+            row('Install', order.installDate?fmtLong(order.installDate):'');
+            row('Order status', order.status==='installed'?'Installed':order.status==='cancelled'?'Cancelled':'Scheduled');
+            if(order.address) row('Address', order.address);
+          } else if(wline){
+            const sale=(state.wireless||[]).find(w=>w.id===wline.saleId)||{};
+            row('Sold', sale.saleDate?fmtLong(sale.saleDate):'');
+            row('Device', wline.device==='new'?'New device':'BYOD · '+(wline.sim==='physical'?'physical SIM':'eSIM'));
+            row('Line status', wline.status==='active'?'Active':wline.status==='cancelled'?'Cancelled':'Pending activation');
+          } else {
+            row('On the board', 'Not uploaded in the app');
+          }
+          more.append(dl);
+          if(order||wline){
+            const open=document.createElement('button'); open.type='button'; open.className='btn btn-ghost btn-small';
+            open.textContent=order?'Open this order':'Open this wireless sale';
+            open.onclick=ev=>{ ev.stopPropagation(); if(order) openDetail(order.id); else openWireless(wline.saleId); };
+            more.append(open);
+          }
+          li.append(more);
+        };
+        ul.append(li);
       });
       body.append(ul);
     });

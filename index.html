@@ -535,7 +535,7 @@ body.on-chat .wrap{padding-bottom:140px}
     </section>
     <section class="team-sec" id="payImport">
       <h2>Import pay report</h2>
-      <p class="note">Upload the weekly Excel report. Internet orders match by MON, wireless lines by phone number. Nothing changes until you tap Apply.</p>
+      <p class="note">Upload the weekly Excel report. Internet orders match by MON, wireless lines by phone number. Paid orders move to installed automatically, since Verizon pays after the install. Nothing changes until you tap Apply.</p>
       <div class="row-btns" style="margin-top:0">
         <label class="btn btn-primary btn-small" for="payFile">Choose Excel file</label>
         <input id="payFile" type="file" accept=".xlsx,.xls,.csv" style="position:absolute;width:1px;height:1px;opacity:0">
@@ -2326,7 +2326,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       if(error){ tmSay($('#payMsg'),'Couldn\'t apply. Try again.','err'); go.disabled=false; return; }
       try{ await sb.rpc('record_pay_items',{p_import:data.import_id,p_items:payPlan.items}); }catch(_){}
       toast('Pay report applied'); payPlan=null; $('#payPreview').innerHTML='';
-      tmSay($('#payMsg'),'Applied: '+data.installs_paid+' installs paid · '+data.lines_paid+' lines paid · '+(data.installs_charged_back+data.lines_charged_back)+' charged back.','ok');
+      tmSay($('#payMsg'),['Applied: '+data.installs_paid+' installs paid', data.lines_paid+' lines paid', data.marked_installed?data.marked_installed+' moved to installed':'', (data.installs_charged_back+data.lines_charged_back)?(data.installs_charged_back+data.lines_charged_back)+' charged back':''].filter(Boolean).join(' · ')+'.','ok');
       loadPayHistory();
     };
     const cancel=document.createElement('button'); cancel.type='button'; cancel.className='btn btn-ghost btn-small'; cancel.textContent='Cancel';

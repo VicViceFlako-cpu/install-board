@@ -189,6 +189,13 @@ button{cursor:pointer}
 .goal-row input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;text-align:center;min-height:40px;width:100%}
 .goal-head{display:grid;grid-template-columns:1fr 84px 84px;gap:8px;font-size:.75rem;color:var(--muted);text-align:center;margin-bottom:4px}
 .goal-head span:first-child{text-align:left}
+.dev-row{display:grid;grid-template-columns:1fr;gap:6px;padding:10px 0;border-top:1px solid var(--line)}
+.dev-row:first-child{border-top:0}
+.dev-row b{font-weight:600}
+.dev-fields{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.dev-fields input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;min-height:42px;width:100%}
+@media (max-width:420px){.dev-fields{grid-template-columns:1fr}}
+.dev-none{color:var(--muted);font-size:.84rem}
 .po-top input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 10px;min-height:42px;width:120px}
 .po-sum{font-weight:600;margin:6px 0 10px}
 .po-agent{border:1px solid var(--line);border-radius:12px;margin-bottom:8px;overflow:hidden}
@@ -504,6 +511,12 @@ body.on-chat .wrap{padding-bottom:140px}
   </div>
 
   <div id="viewTeam" hidden>
+    <section class="team-sec" id="devices">
+      <h2>Device management</h2>
+      <p class="note">Verizon iPads assigned to each agent. Add the device ID (serial or asset tag) and an optional note, like the model or when it was issued. Agents can see their own device only.</p>
+      <div id="devList"></div>
+      <div id="devMsg" class="team-msg" role="status"></div>
+    </section>
     <section class="team-sec" id="payImport">
       <h2>Import pay report</h2>
       <p class="note">Upload the weekly Excel report. Internet orders match by MON, wireless lines by phone number. Nothing changes until you tap Apply.</p>
@@ -867,7 +880,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       const rp=document.createElement('div'); rp.className='risk-pick';
       const lab=document.createElement('span'); lab.textContent='Risk:'; rp.append(lab);
       const cur=riskOf(i);
-      [['','Normal'],['medium','Medium'],['high','High']].forEach(([v,t])=>{
+      [['','Low'],['medium','Medium'],['high','High']].forEach(([v,t])=>{
         const b=document.createElement('button'); b.type='button'; b.className='btn btn-small '+(cur===v?'btn-primary':'btn-ghost'); b.textContent=t;
         b.onclick=()=>{ if(cur!==v) setRisk(i.id,v); }; rp.append(b);
       });
@@ -1183,7 +1196,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     $('#viewInstalls').hidden=t!=='installs'; $('#viewChat').hidden=t!=='chat'; $('#viewCal').hidden=t!=='calendar'; $('#viewTeam').hidden=t!=='team'; $('#viewWireless').hidden=t!=='wireless';
     if(t==='wireless') renderWireless(); $('#viewLeaders').hidden=t!=='leaders';
     if(t==='leaders') renderLeaders();
-    if(t==='team'){ loadTeam(); loadSettings(); loadPayHistory(); }
+    if(t==='team'){ loadTeam(); loadSettings(); loadPayHistory(); loadDevices(); }
     if(t==='calendar') renderCal();
     $('#composer').hidden=t!=='chat'; document.body.classList.toggle('on-chat',t==='chat');
     if(t==='chat'){ renderChat(); markSeen(); requestAnimationFrame(()=>window.scrollTo(0,document.body.scrollHeight)); }
@@ -1634,6 +1647,11 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     }
     if(note.textContent) sh.append(note);
     sh.append(btns);
+    if(!state.canAnnounce&&state.devices&&state.devices[state.meId]&&state.devices[state.meId].device_id){
+      const dv=document.createElement('p'); dv.className='lb-sub'; dv.style.marginTop='10px';
+      dv.textContent='📱 Your Verizon iPad: '+state.devices[state.meId].device_id+(state.devices[state.meId].note?' · '+state.devices[state.meId].note:'');
+      sh.append(dv);
+    }
     const t=document.createElement('h3'); t.textContent='You\'ll get alerts for'; sh.append(t);
     const ul=document.createElement('ul'); ul.className='al-list';
     const items=['🎯 When you hit your weekly goal','📣 Announcements','💬 Team chat messages, and when someone @mentions you','📡 Your installs today (10 AM reminder)','🗓 Your installs for tomorrow (7 PM reminder)','✅ When someone else updates one of your orders','💰 When a manager adds a sale for you','📱 New wireless sales added for you'];
@@ -2280,6 +2298,45 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     }catch(e){ toast(writeErr(e)); }
   }
 
+  // ---------- device management ----------
+  state.devices={};
+  async function loadDevices(){
+    try{
+      const {data}=await sb.from('agent_devices').select('id,user_id,device_id,note');
+      state.devices={}; (data||[]).forEach(d=>state.devices[d.user_id]=d);
+      renderDevices();
+    }catch(_){}
+  }
+  function renderDevices(){
+    const box=$('#devList'); if(!box||!state.canAnnounce) return;
+    if(box.contains(document.activeElement)) return;
+    box.innerHTML='';
+    const ids=Object.keys(state.profiles||{}).sort((a,b)=>agentLabel(a).localeCompare(agentLabel(b)));
+    ids.forEach(id=>{
+      const d=state.devices[id]||{}, row=document.createElement('div'); row.className='dev-row';
+      const nm=document.createElement('b'); nm.textContent=agentLabel(id)+(id===state.meId?' (you)':''); row.append(nm);
+      const f=document.createElement('div'); f.className='dev-fields';
+      const dev=document.createElement('input'); dev.type='text'; dev.placeholder='Device ID'; dev.value=d.device_id||'';
+      dev.autocapitalize='characters'; dev.autocomplete='off'; dev.spellcheck=false;
+      dev.setAttribute('aria-label','Device ID for '+agentLabel(id));
+      const note=document.createElement('input'); note.type='text'; note.placeholder='Note (model, date issued)'; note.value=d.note||'';
+      note.setAttribute('aria-label','Device note for '+agentLabel(id));
+      const save=async()=>{
+        const device_id=dev.value.trim(), n=note.value.trim();
+        try{
+          if(!device_id&&!n){ if(d.id){ const {error}=await sb.from('agent_devices').delete().eq('id',d.id); if(error) throw error; delete state.devices[id]; toast('Device removed'); } return; }
+          const payload={user_id:id,device_id,note:n,updated_at:new Date().toISOString()};
+          if(d.id) payload.id=d.id;
+          const {data,error}=await sb.from('agent_devices').upsert(payload).select('id,user_id,device_id,note').single();
+          if(error) throw error;
+          state.devices[id]=data; toast('Device saved');
+        }catch(e){ tmSay($('#devMsg'),writeErr(e),'err'); }
+      };
+      dev.onchange=save; note.onchange=save;
+      f.append(dev,note); row.append(f); box.append(row);
+    });
+  }
+
   // ---------- wiring ----------
   $('#uploadBtn').onclick=()=>{ clearShot(); state.pendingCredit=state.meId||''; openPaste(); };
   $('#manualBtn').onclick=()=>{ clearShot(); openReview([{agentId:state.meId||'',agent:'',saleDate:todayISO(),installDate:''}],{title:'Add install',hint:'Enter the dates, then save.'}); ensureNames([state.meId]); };
@@ -2410,7 +2467,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       $('#teamBtn').hidden=!state.canAnnounce; document.querySelector('.tabs').classList.add('five');
       $('#annBtn').hidden=!state.canAnnounce; $('#composerIn').classList.toggle('admin',state.canAnnounce);
       const sbtn=$('#saveBtn'); if(sbtn) sbtn.disabled=false;
-      setTimeout(()=>{ syncAlerts(); openHash(location.hash); loadRisk(); },0);
+      setTimeout(()=>{ syncAlerts(); openHash(location.hash); loadRisk(); loadDevices(); },0);
       sb.channel('rt-risk').on('postgres_changes',{event:'*',schema:'public',table:'order_risk'},()=>loadRisk()).subscribe();
       loadSettings();
       sb.channel('rt-settings')

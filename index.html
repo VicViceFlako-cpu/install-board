@@ -225,6 +225,11 @@ button{cursor:pointer}
 @media (max-width:420px){.wl-line{grid-template-columns:1fr auto}.wl-line .sim-wrap{grid-column:1/-1}}
 .wl-line select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 8px;min-height:44px}
 .wl-flag{font-size:.72rem;font-weight:600;padding:3px 8px;border-radius:999px;background:color-mix(in srgb,var(--signal) 18%,transparent);white-space:nowrap}
+.risk-tag{font-size:.7rem;font-weight:700;padding:2px 7px;border-radius:999px;white-space:nowrap}
+.risk-tag.medium{background:color-mix(in srgb,#E8A33D 32%,transparent);color:var(--ink)}
+.risk-tag.high{background:color-mix(in srgb,var(--danger) 26%,transparent);color:var(--ink)}
+.risk-pick{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;align-items:center}
+.risk-pick span{font-size:.8rem;color:var(--muted);margin-right:2px}
 .wl-phones input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 12px;min-height:44px}
 .wl-card{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--signal);border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:pointer}
 .wl-card .n{font-size:1.5rem;font-weight:700;line-height:1;text-align:center;min-width:34px}
@@ -676,6 +681,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const info=document.createElement('div'); info.className='info';
     const a=document.createElement('div'); a.className='agent'; a.textContent=i.customer||agentName(i);
     if(i.mon){ const mo=document.createElement('span'); mo.className='mon-tag'; mo.textContent=i.mon; a.append(' ',mo); }
+    { const rl=riskOf(i); if(rl){ a.append(' '); a.append(riskTag(rl)); } }
     const m=document.createElement('div'); m.className='meta';
     const when=st==='installed'?' · installed':st==='cancelled'?' · cancelled':n===0?' · due today':n===1?' · tomorrow':(n>1?' · in '+n+' days':(n<0?' · '+Math.abs(n)+(Math.abs(n)===1?' day':' days')+' overdue':''));
     const rs=(i.rescheduleCount||0)>0?' · rescheduled '+i.rescheduleCount+'×':'';
@@ -840,6 +846,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     pill.className='sheet-pill'+(st==='installed'?' done':st==='cancelled'?' x':'');
     pill.textContent=st==='installed'?'Installed':st==='cancelled'?'Cancelled':n===0?'Installing today':n===1?'Installing tomorrow':(n!==null&&n<0)?Math.abs(n)+(Math.abs(n)===1?' day':' days')+' overdue':(n!==null?'Installing in '+n+' days':'Scheduled');
     sh.append(pill);
+    { const rl=riskOf(i); if(rl){ sh.append(' '); sh.append(riskTag(rl)); } }
     const dl=document.createElement('dl'); dl.className='dl';
     const row=(label,val)=>{ if(val===''||val==null) return; const dt=document.createElement('dt'); dt.textContent=label; const dd=document.createElement('dd'); if(val instanceof Node) dd.append(val); else dd.textContent=val; dl.append(dt,dd); };
     row('Order # (MON)', i.mon||'');
@@ -856,6 +863,16 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     row('Added', [fmtStamp(i.createdAt), i.createdBy?'by '+personName(i.createdBy):''].filter(Boolean).join(' '));
     sh.append(dl);
     { const link=textLink(i); if(link) sh.append(link); }
+    if(state.canAnnounce){
+      const rp=document.createElement('div'); rp.className='risk-pick';
+      const lab=document.createElement('span'); lab.textContent='Risk:'; rp.append(lab);
+      const cur=riskOf(i);
+      [['','Normal'],['medium','Medium'],['high','High']].forEach(([v,t])=>{
+        const b=document.createElement('button'); b.type='button'; b.className='btn btn-small '+(cur===v?'btn-primary':'btn-ghost'); b.textContent=t;
+        b.onclick=()=>{ if(cur!==v) setRisk(i.id,v); }; rp.append(b);
+      });
+      sh.append(rp);
+    }
     if(state.canAnnounce){
       const edit=document.createElement('button'); edit.type='button'; edit.className='btn btn-ghost btn-small'; edit.style.marginTop='14px';
       edit.textContent='✏️ Edit order'; edit.onclick=()=>openEdit(i.id); sh.append(edit);
@@ -1511,12 +1528,14 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       }
       const {data:profs}=await sb.from('profiles').select('id,full_name');
       const nm={}; (profs||[]).forEach(p=>nm[p.id]=p.full_name||'');
-      const head=['Order # (MON)','Customer','Sales agent','Sale date','Install date','Appointment','Status','Verizon status','Address','Phone','Reschedules','Added by','Added on','Status updated','Status updated by','Payout','Paid on'];
+      const {data:risks}=await sb.from('order_risk').select('install_id,level');
+      const riskLevels={}; (risks||[]).forEach(r=>riskLevels[r.install_id]=r.level==='high'?'High risk':'Medium risk');
+      const head=['Order # (MON)','Customer','Sales agent','Sale date','Install date','Appointment','Status','Verizon status','Address','Phone','Reschedules','Added by','Added on','Status updated','Status updated by','Payout','Paid on','Risk'];
       const lines=[head.map(csvCell).join(',')];
       rows.forEach(r=>{
         lines.push([r.mon||'',r.customer,nm[r.agent_id]||'',ymd(r.sale_date),ymd(r.install_date),r.appt_window,
           r.status==='installed'?'Installed':r.status==='cancelled'?'Cancelled':'Scheduled',r.vz_status,r.address,fmtPhone(r.phone),
-          r.reschedule_count||0,nm[r.created_by]||'',stamp(r.created_at),stamp(r.status_at),nm[r.status_by]||'',r.status!=='installed'&&r.payout_status==='unpaid'?'':(r.payout_status==='paid'?'Paid':r.payout_status==='charged_back'?'Charged back':'Unpaid'),stamp(r.paid_at)].map(csvCell).join(','));
+          r.reschedule_count||0,nm[r.created_by]||'',stamp(r.created_at),stamp(r.status_at),nm[r.status_by]||'',r.status!=='installed'&&r.payout_status==='unpaid'?'':(r.payout_status==='paid'?'Paid':r.payout_status==='charged_back'?'Charged back':'Unpaid'),stamp(r.paid_at),(riskLevels[r.id]||'')].map(csvCell).join(','));
       });
       const name='install-board-orders-'+todayISO()+'.csv';
       exportFile=new File(['\uFEFF'+lines.join('\r\n')],name,{type:'text/csv'});
@@ -2243,6 +2262,24 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     });
   }
 
+  // ---------- risk flags (manager sets; only manager + credited agent can see) ----------
+  state.risk={};
+  async function loadRisk(){
+    try{ const {data}=await sb.from('order_risk').select('install_id,level,note');
+      state.risk={}; (data||[]).forEach(r=>state.risk[r.install_id]={level:r.level,note:r.note||''});
+      render(); if(state.detailId) openDetail(state.detailId,true);
+    }catch(_){}
+  }
+  function riskOf(i){ const r=state.risk[i&&i.id]; return r?r.level:''; }
+  function riskTag(level){ const t=document.createElement('span'); t.className='risk-tag '+level; t.textContent=(level==='high'?'⚠️ High':'⚠️ Medium')+' risk'; return t; }
+  async function setRisk(id,level){
+    try{
+      if(!level){ const {error}=await sb.from('order_risk').delete().eq('install_id',id); if(error) throw error; delete state.risk[id]; toast('Risk flag cleared'); }
+      else { const {error}=await sb.from('order_risk').upsert({install_id:id,level,set_by:state.meId,set_at:new Date().toISOString()}); if(error) throw error; state.risk[id]={level,note:''}; toast(level==='high'?'Flagged high risk':'Flagged medium risk'); }
+      render(); openDetail(id,true);
+    }catch(e){ toast(writeErr(e)); }
+  }
+
   // ---------- wiring ----------
   $('#uploadBtn').onclick=()=>{ clearShot(); state.pendingCredit=state.meId||''; openPaste(); };
   $('#manualBtn').onclick=()=>{ clearShot(); openReview([{agentId:state.meId||'',agent:'',saleDate:todayISO(),installDate:''}],{title:'Add install',hint:'Enter the dates, then save.'}); ensureNames([state.meId]); };
@@ -2373,7 +2410,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       $('#teamBtn').hidden=!state.canAnnounce; document.querySelector('.tabs').classList.add('five');
       $('#annBtn').hidden=!state.canAnnounce; $('#composerIn').classList.toggle('admin',state.canAnnounce);
       const sbtn=$('#saveBtn'); if(sbtn) sbtn.disabled=false;
-      setTimeout(()=>{ syncAlerts(); openHash(location.hash); },0);
+      setTimeout(()=>{ syncAlerts(); openHash(location.hash); loadRisk(); },0);
+      sb.channel('rt-risk').on('postgres_changes',{event:'*',schema:'public',table:'order_risk'},()=>loadRisk()).subscribe();
       loadSettings();
       sb.channel('rt-settings')
         .on('postgres_changes',{event:'*',schema:'public',table:'app_settings'},()=>loadSettings())

@@ -415,7 +415,7 @@ body.on-chat .wrap{padding-bottom:140px}
   </div>
 </div>
 <div class="wrap">
-  <div class="whoami"><h1>Install Board</h1><div class="who-btns"><button id="teamBtn" hidden>⚙️ Team</button><button id="alertsBtn" hidden>🔔 Alerts</button><button id="signOut" hidden>Sign out</button></div></div>
+  <div class="whoami"><h1>Install Board</h1><div class="who-btns"><button id="payBtn" hidden>🧾 Pay</button><button id="teamBtn" hidden>⚙️ Team</button><button id="alertsBtn" hidden>🔔 Alerts</button><button id="signOut" hidden>Sign out</button></div></div>
   <p class="sub">Your team's WiFi installs and chat in one place.</p>
 
   <nav class="tabs" role="tablist">
@@ -511,6 +511,17 @@ body.on-chat .wrap{padding-bottom:140px}
   </div>
 
   <div id="viewTeam" hidden>
+    <section class="team-sec" id="reportNames">
+      <h2>Pay report names</h2>
+      <p class="note">Some agents appear on the Verizon report under a different name. Map each report name to the right person so their pay report and payouts land correctly.</p>
+      <div id="rnList"></div>
+      <div class="dev-fields" style="margin-top:10px">
+        <input id="rnNew" type="text" placeholder="Name as it appears on the report" autocomplete="off">
+        <select id="rnWho"></select>
+      </div>
+      <div class="po-actions"><button id="rnAdd" class="btn btn-ghost btn-small">Add mapping</button></div>
+      <div id="rnMsg" class="team-msg" role="status"></div>
+    </section>
     <section class="team-sec" id="devices">
       <h2>Device management</h2>
       <p class="note">Verizon iPads assigned to each agent. Add the device ID (serial or asset tag) and an optional note, like the model or when it was issued. Agents can see their own device only.</p>
@@ -1196,7 +1207,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     $('#viewInstalls').hidden=t!=='installs'; $('#viewChat').hidden=t!=='chat'; $('#viewCal').hidden=t!=='calendar'; $('#viewTeam').hidden=t!=='team'; $('#viewWireless').hidden=t!=='wireless';
     if(t==='wireless') renderWireless(); $('#viewLeaders').hidden=t!=='leaders';
     if(t==='leaders') renderLeaders();
-    if(t==='team'){ loadTeam(); loadSettings(); loadPayHistory(); loadDevices(); }
+    if(t==='team'){ loadTeam(); loadSettings(); loadPayHistory(); loadDevices(); loadReportNames(); }
     if(t==='calendar') renderCal();
     $('#composer').hidden=t!=='chat'; document.body.classList.toggle('on-chat',t==='chat');
     if(t==='chat'){ renderChat(); markSeen(); requestAnimationFrame(()=>window.scrollTo(0,document.body.scrollHeight)); }
@@ -1595,7 +1606,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   let swReg=null;
   if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').then(r=>{ swReg=r; }).catch(()=>{}); 
     navigator.serviceWorker.addEventListener('message',e=>{ const h=e.data&&e.data.hash; openHash(h); }); }
-  function openHash(h){ if(!state.db) return; if(h==='#chat') showTab('chat'); else if(h==='#installs') showTab('installs'); else if(h==='#wireless') showTab('wireless'); }
+  function openHash(h){ if(!state.db) return; if(h==='#chat') showTab('chat'); else if(h==='#installs') showTab('installs'); else if(h==='#wireless') showTab('wireless'); else if(h==='#pay') openPay(state.meId); }
   function b64u(str){ const pad='='.repeat((4-str.length%4)%4); const raw=atob((str+pad).replace(/-/g,'+').replace(/_/g,'/')); return Uint8Array.from([...raw].map(c=>c.charCodeAt(0))); }
   async function currentSub(){ if(!pushCapable()) return null; const reg=swReg||await navigator.serviceWorker.ready; return reg.pushManager.getSubscription(); }
   async function alertsOn(){ return pushCapable()&&Notification.permission==='granted'&&!!(await currentSub().catch(()=>null)); }
@@ -1613,7 +1624,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   async function disableAlerts(){ const sub=await currentSub(); if(!sub) return; const ep=sub.endpoint; await sub.unsubscribe().catch(()=>{}); await sb.rpc('remove_push_subscription',{p_endpoint:ep}); }
   async function refreshAlertUI(){
     const on=await alertsOn().catch(()=>false);
-    $('#alertsBtn').hidden=!state.db; $('#teamBtn').hidden=!state.canAnnounce; $('#alertsBtn').textContent=on?'🔔 Alerts on':'🔔 Alerts';
+    $('#alertsBtn').hidden=!state.db; $('#teamBtn').hidden=!state.canAnnounce; $('#payBtn').hidden=!state.db; $('#alertsBtn').textContent=on?'🔔 Alerts on':'🔔 Alerts';
     let dismissed=false; try{ dismissed=localStorage.getItem('alertBannerX')==='1'; }catch(_){}
     $('#alertBanner').hidden=on||dismissed||!state.db||(pushCapable()&&Notification.permission==='denied');
     return on;
@@ -1654,7 +1665,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     }
     const t=document.createElement('h3'); t.textContent='You\'ll get alerts for'; sh.append(t);
     const ul=document.createElement('ul'); ul.className='al-list';
-    const items=['🎯 When you hit your weekly goal','📣 Announcements','💬 Team chat messages, and when someone @mentions you','📡 Your installs today (10 AM reminder)','🗓 Your installs for tomorrow (7 PM reminder)','✅ When someone else updates one of your orders','💰 When a manager adds a sale for you','📱 New wireless sales added for you'];
+    const items=['🧾 When your pay report is ready','🎯 When you hit your weekly goal','📣 Announcements','💬 Team chat messages, and when someone @mentions you','📡 Your installs today (10 AM reminder)','🗓 Your installs for tomorrow (7 PM reminder)','✅ When someone else updates one of your orders','💰 When a manager adds a sale for you','📱 New wireless sales added for you'];
     if(state.canAnnounce){ items.push('💰 Every new sale, and order updates from agents (managers only)'); items.push('📊 A daily recap at 8 PM (managers only)'); }
     items.forEach(tx=>{ const li=document.createElement('li'); li.textContent=tx; ul.append(li); }); sh.append(ul);
     wrap.hidden=false; document.body.style.overflow='hidden';
@@ -2128,6 +2139,11 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       if(type==='tel'){ inp.inputMode='tel'; }
       l.append(inp); form.append(l); fields[key]=inp;
     };
+    const cl=document.createElement('label'); cl.textContent='Credit this order to';
+    const csel=document.createElement('select');
+    Object.keys(state.profiles||{}).sort((a,b)=>agentLabel(a).localeCompare(agentLabel(b))).forEach(id2=>{
+      const o=document.createElement('option'); o.value=id2; o.textContent=agentLabel(id2)+(id2===state.meId?' (you)':''); csel.append(o); });
+    csel.value=i.agentId||state.meId; cl.append(csel); form.append(cl); fields.agentId=csel;
     add('customer','Customer name','text',i.customer);
     add('saleDate','Sale date','date',i.saleDate);
     add('installDate','Install date','date',i.installDate);
@@ -2147,7 +2163,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       const sd=fields.saleDate.value, idt=fields.installDate.value;
       if(!parseISO(idt)){ msg.className='team-msg err'; msg.textContent='Pick an install date.'; return; }
       if(sd&&parseISO(sd)&&idt<sd){ msg.className='team-msg err'; msg.textContent='The install date is before the sale date. Use Swap if they got reversed.'; return; }
-      const patch={customer:fields.customer.value.trim(), saleDate:parseISO(sd)?sd:'', installDate:idt,
+      const patch={agentId:fields.agentId.value||'', customer:fields.customer.value.trim(), saleDate:parseISO(sd)?sd:'', installDate:idt,
         window:fields.window.value.trim(), phone:phoneDigits(fields.phone.value), address:fields.address.value.trim(), mon:fields.mon.value.trim()};
       if(idt!==i.installDate){
         const hist=Array.isArray(i.history)?i.history.slice():[];
@@ -2172,6 +2188,15 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       sc.onload=()=>res(window.XLSX); sc.onerror=()=>rej(new Error('Couldn\'t load the spreadsheet reader. Check your connection.')); document.head.append(sc); });
   }
   const norm=v=>String(v==null?'':v).trim();
+  // wireless rows repeat per commission type; keep the plan name, drop the spiff/base rows
+  const isSpiffish=p=>/spiff/i.test(p)||/^smartphone$/i.test(p.trim());
+  const planTitle=p=>p.replace(/\s+/g,' ').trim().toLowerCase().replace(/\b([a-z])/g,(m,c)=>c.toUpperCase());
+  function bestProduct(a,b,kind){
+    if(kind!=='wireless') return a||b;
+    const pick=[a,b].filter(Boolean);
+    const plans=pick.filter(x=>!isSpiffish(x));
+    return planTitle((plans[0]||pick[0]||''));
+  }
   const digits10=v=>norm(v).replace(/\D/g,'').slice(-10);
   function payRowKind(r){
     const cat=norm(r.Category).toLowerCase(), amt=parseFloat(norm(r.PaidAmount).replace(/[^0-9.-]/g,''));
@@ -2190,16 +2215,48 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       const byPhone={}, saleOf={};
       (state.wireless||[]).forEach(w=>saleOf[w.id]=w);
       (state.wlines||[]).forEach(l=>{ const d=digits10(l.phone); if(d) (byPhone[d]=byPhone[d]||[]).push(l); });
-      const plan={installsPaid:new Map(),installsCb:new Map(),linesPaid:new Map(),linesCb:new Map()}, missing=[], already=[];
+      const plan={installsPaid:new Map(),installsCb:new Map(),linesPaid:new Map(),linesCb:new Map()}, missing=[], already=[], items=[];
+      await loadReportNames();
+      const byName={}; Object.entries(state.profiles||{}).forEach(([id,p])=>{ const n=nameKey(p.full_name); if(n) byName[n]=id; });
+      Object.entries(state.reportNames||{}).forEach(([k,v])=>{ if(v.userId) byName[k]=v.userId; });
+      const unknownNames=new Set(), itemsBy=new Map();
+      const xlDate=v=>{ if(!v) return ''; if(v instanceof Date) return iso(v);
+        const m=norm(v).match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/); if(!m) return '';
+        const y=m[3].length===2?'20'+m[3]:m[3]; return y+'-'+String(+m[1]).padStart(2,'0')+'-'+String(+m[2]).padStart(2,'0'); };
       let used=0;
       rows.forEach(r=>{
         const doc=norm(r.DocumentNum||r.documentnum||r['Document Num']);
         if(!doc||!norm(r.Status)) return;
         used++;
         const kind=payRowKind(r), who=norm(r.CustomerName)||norm(r.SalesAgentName)||doc, mon=doc.toUpperCase();
+        const agentName=norm(r.SalesAgentName), matchedAgent=byName[nameKey(agentName)]||'';
+        if(agentName&&!matchedAgent) unknownNames.add(agentName);
+        const rowKind=/^[A-Z]{2}\d{6,}$/.test(mon)?'internet':(digits10(doc).length===10?'wireless':'other');
+        const payDate=xlDate(r.PaymentDate), prod=norm(r.Product)||norm(r.Program);
+        // one statement line per order or per phone number, however many commission rows it has
+        const itemKey=(rowKind==='wireless'?'w:'+digits10(doc):rowKind==='internet'?'i:'+mon:'o:'+doc)+'|'+payDate;
+        let item=itemsBy.get(itemKey);
+        if(item){
+          if(kind==='cb') item.outcome='chargeback';
+          const amt=parseFloat(norm(r.PaidAmount).replace(/[^0-9.-]/g,''));
+          if(isFinite(amt)) item.amount=String((parseFloat(item.amount)||0)+amt);
+          item.product=bestProduct(item.product,prod,rowKind);
+          if(!item.customer) item.customer=norm(r.CustomerName);
+          if(!item.agent_id&&matchedAgent) item.agent_id=matchedAgent;
+        } else {
+          item={agent_name:agentName, agent_id:matchedAgent, payment_date:payDate,
+            doc_num:rowKind==='wireless'?digits10(doc):doc, customer:norm(r.CustomerName), product:prod,
+            kind:rowKind, outcome:kind==='cb'?'chargeback':'paid', amount:norm(r.PaidAmount), risk:''};
+          item.product=bestProduct(item.product,'',rowKind);
+          itemsBy.set(itemKey,item); items.push(item);
+        }
         if(/^[A-Z]{2}\d{6,}$/.test(mon)){
           const i=byMon[mon];
           if(!i){ missing.push({doc:mon,who}); return; }
+          item.board_id=i.id;
+          if(i.agentId&&i.agentId!==item.agent_id){ item.credit_note=agentName(i); item.agent_id=i.agentId; }
+          if(!item.customer) item.customer=i.customer||'';
+          item.risk=riskOf(i)||'';
           (kind==='cb'?plan.installsCb:plan.installsPaid).set(i.id,{label:i.customer||mon});
           if(kind==='cb') plan.installsPaid.delete(i.id);
           return;
@@ -2208,6 +2265,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         if(ph.length===10){
           const ls=byPhone[ph];
           if(!ls||!ls.length){ missing.push({doc:fmtPhone(ph),who}); return; }
+          { const sale0=saleOf[(ls[0]||{}).saleId]||{}; if(sale0.agentId&&sale0.agentId!==item.agent_id){ item.credit_note=agentLabel(sale0.agentId); item.agent_id=sale0.agentId; } if(!item.customer) item.customer=sale0.customer||''; }
           ls.forEach(l=>{ const sale=saleOf[l.saleId]||{};
             (kind==='cb'?plan.linesCb:plan.linesPaid).set(l.id,{label:(sale.customer||'Wireless')+' · '+fmtPhone(l.phone)});
             if(kind==='cb') plan.linesPaid.delete(l.id); });
@@ -2219,7 +2277,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         if(rec&&rec.payoutStatus===st){ m.delete(id); already.push(1); } }); };
       drop(plan.installsPaid,'paid',state.installs||[]); drop(plan.installsCb,'charged_back',state.installs||[]);
       drop(plan.linesPaid,'paid',state.wlines||[]); drop(plan.linesCb,'charged_back',state.wlines||[]);
-      payPlan={plan,file:file.name,missing,already};
+      payPlan={plan,file:file.name,missing,already,items,unknownNames:[...unknownNames]};
       renderPayPreview();
       tmSay(msg,used+' rows read from '+file.name+'.','ok');
     }catch(err){ tmSay(msg,err.message||'Couldn\'t read that file.','err'); }
@@ -2234,11 +2292,13 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     box.append(sum);
     const list=document.createElement('div'); list.className='pi-list';
     const add=(label,tag)=>{ const r=document.createElement('div'); r.className='pi-row'; const a=document.createElement('div'); a.textContent=label; const b=document.createElement('span'); b.textContent=tag; r.append(a,b); list.append(r); };
-    plan.installsPaid.forEach(v=>add(v.label,'paid'));
+    const creditNote=id=>{ const it=(payPlan.items||[]).find(x=>x.board_id===id); return it&&it.credit_note?' → '+it.credit_note:''; };
+    plan.installsPaid.forEach((v,id)=>{ const rl=riskOf({id}); add(v.label+(rl?(rl==='high'?' ⚠️ high risk':' ⚠️ medium risk'):'')+creditNote(id),'paid'); });
     plan.linesPaid.forEach(v=>add(v.label,'paid'));
-    plan.installsCb.forEach(v=>add(v.label,'chargeback'));
+    plan.installsCb.forEach((v,id)=>{ const rl=riskOf({id}); add(v.label+(rl?(rl==='high'?' ⚠️ high risk':' ⚠️ medium risk'):''),'chargeback'); });
     plan.linesCb.forEach(v=>add(v.label,'chargeback'));
     missing.forEach(m=>add(m.doc+' — '+m.who,'not found'));
+    (payPlan.unknownNames||[]).forEach(n=>add(n,'name not mapped'));
     if(list.children.length) box.append(list);
     const acts=document.createElement('div'); acts.className='po-actions';
     const go=document.createElement('button'); go.type='button'; go.className='btn btn-primary btn-small'; go.disabled=!(paidN+cbN);
@@ -2250,6 +2310,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         p_installs_paid:[...plan.installsPaid.keys()], p_installs_cb:[...plan.installsCb.keys()],
         p_lines_paid:[...plan.linesPaid.keys()], p_lines_cb:[...plan.linesCb.keys()]});
       if(error){ tmSay($('#payMsg'),'Couldn\'t apply. Try again.','err'); go.disabled=false; return; }
+      try{ await sb.rpc('record_pay_items',{p_import:data.import_id,p_items:payPlan.items}); }catch(_){}
       toast('Pay report applied'); payPlan=null; $('#payPreview').innerHTML='';
       tmSay($('#payMsg'),'Applied: '+data.installs_paid+' installs paid · '+data.lines_paid+' lines paid · '+(data.installs_charged_back+data.lines_charged_back)+' charged back.','ok');
       loadPayHistory();
@@ -2336,6 +2397,103 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       f.append(dev,note); row.append(f); box.append(row);
     });
   }
+
+  // ---------- pay statements ----------
+  state.payFor=null;
+  async function openPay(agentId){
+    state.detailId=null;
+    const who=agentId||state.meId;
+    state.payFor=who;
+    const wrap=$('#sheet'), sh=wrap.querySelector('.sheet'); sh.innerHTML='';
+    const head=document.createElement('div'); head.className='sheet-head';
+    const h=document.createElement('h2'); h.id='sheetTitle'; h.textContent=state.canAnnounce&&who!==state.meId?agentLabel(who)+'\u2019s pay reports':'My pay reports';
+    const x=document.createElement('button'); x.className='sheet-x'; x.type='button'; x.setAttribute('aria-label','Close'); x.textContent='×'; x.onclick=closeDetail;
+    head.append(h,x); sh.append(head);
+    wrap.hidden=false; document.body.style.overflow='hidden'; sh.scrollTop=0;
+    if(state.canAnnounce){
+      const pick=document.createElement('select'); pick.style.cssText='font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;min-height:44px;width:100%;margin-bottom:10px';
+      Object.keys(state.profiles||{}).sort((a,b)=>agentLabel(a).localeCompare(agentLabel(b))).forEach(id=>{
+        const o=document.createElement('option'); o.value=id; o.textContent=agentLabel(id)+(id===state.meId?' (you)':''); pick.append(o); });
+      pick.value=who; pick.onchange=()=>openPay(pick.value); sh.append(pick);
+    }
+    const body=document.createElement('div'); body.textContent='Loading…'; body.className='lb-sub'; sh.append(body);
+    let q=sb.from('pay_report_items').select('payment_date,doc_num,customer,product,kind,outcome,risk').order('payment_date',{ascending:false}).limit(500);
+    if(state.canAnnounce) q=q.eq('agent_id',who).eq('outcome','paid');
+    const {data,error}=await q;
+    body.innerHTML='';
+    if(error){ body.textContent='Couldn\'t load pay reports. Pull down to refresh and try again.'; return; }
+    if(!data||!data.length){ body.textContent='No pay reports yet. They appear here after a pay report is imported.'; return; }
+    const weeks={}; data.forEach(r=>{ const k=r.payment_date||'undated'; (weeks[k]=weeks[k]||[]).push(r); });
+    Object.keys(weeks).sort().reverse().forEach(k=>{
+      const head2=document.createElement('h3');
+      const risky=weeks[k].filter(r=>r.risk).length;
+      head2.textContent=(k==='undated'?'Undated':'Paid '+fmtLong(k))+' — '+weeks[k].length+(weeks[k].length===1?' item':' items')+(risky?' · '+risky+' at reduced commission':'');
+      body.append(head2);
+      const ul=document.createElement('ul'); ul.className='hist';
+      weeks[k].forEach(r=>{
+        const li=document.createElement('li');
+        const b=document.createElement('b'); b.textContent=r.customer||r.doc_num||'Order';
+        if(r.risk){ b.append(' '); b.append(riskTag(r.risk)); }
+        const sm=document.createElement('small');
+        sm.textContent=[r.kind==='wireless'?fmtPhone(r.doc_num):r.doc_num, r.product, r.risk?'reduced commission':''].filter(Boolean).join(' · ');
+        li.append(b,sm); ul.append(li);
+      });
+      body.append(ul);
+    });
+  }
+  $('#payBtn').onclick=()=>openPay(state.meId);
+
+  // ---------- report name mapping ----------
+  state.reportNames={};
+  const nameKey=v=>String(v||'').trim().toLowerCase().replace(/\s+/g,' ');
+  async function loadReportNames(){
+    if(!state.canAnnounce) return;
+    try{ const {data}=await sb.from('report_names').select('name_key,display_name,user_id');
+      state.reportNames={}; (data||[]).forEach(r=>state.reportNames[r.name_key]={display:r.display_name,userId:r.user_id});
+      renderReportNames();
+    }catch(_){}
+  }
+  function agentOptions(sel,val){
+    sel.innerHTML='';
+    const none=document.createElement('option'); none.value=''; none.textContent='— not on the team —'; sel.append(none);
+    Object.keys(state.profiles||{}).sort((a,b)=>agentLabel(a).localeCompare(agentLabel(b))).forEach(id=>{
+      const o=document.createElement('option'); o.value=id; o.textContent=agentLabel(id); sel.append(o); });
+    sel.value=val||'';
+  }
+  function renderReportNames(){
+    const box=$('#rnList'); if(!box||!state.canAnnounce) return;
+    if(box.contains(document.activeElement)) return;
+    box.innerHTML='';
+    Object.entries(state.reportNames).sort((a,b)=>a[1].display.localeCompare(b[1].display)).forEach(([key,v])=>{
+      const row=document.createElement('div'); row.className='dev-row';
+      const nm=document.createElement('b'); nm.textContent=v.display||key; row.append(nm);
+      const f=document.createElement('div'); f.className='dev-fields';
+      const sel=document.createElement('select'); sel.style.cssText='font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px;min-height:42px';
+      agentOptions(sel,v.userId);
+      sel.setAttribute('aria-label','Maps '+(v.display||key)+' to');
+      sel.onchange=async()=>{
+        const {error}=await sb.from('report_names').upsert({name_key:key,display_name:v.display||key,user_id:sel.value||null,updated_at:new Date().toISOString()});
+        if(error){ tmSay($('#rnMsg'),'Couldn\'t save. Try again.','err'); return; }
+        state.reportNames[key].userId=sel.value||null; toast('Mapping saved');
+      };
+      const del=document.createElement('button'); del.type='button'; del.className='btn btn-ghost btn-small'; del.textContent='Remove';
+      del.onclick=async()=>{ if(!confirm('Remove the mapping for '+(v.display||key)+'?')) return;
+        const {error}=await sb.from('report_names').delete().eq('name_key',key);
+        if(error){ toast('Couldn\'t remove. Try again.'); return; }
+        delete state.reportNames[key]; renderReportNames(); toast('Removed'); };
+      f.append(sel,del); row.append(f); box.append(row);
+    });
+    if(!box.children.length){ const p=document.createElement('p'); p.className='dev-none'; p.textContent='No mappings yet.'; box.append(p); }
+    agentOptions($('#rnWho'),'');
+  }
+  $('#rnAdd').onclick=async()=>{
+    const raw=$('#rnNew').value.trim(), who=$('#rnWho').value, msg=$('#rnMsg');
+    if(!raw){ tmSay(msg,'Type the name exactly as it appears on the report.','err'); return; }
+    const key=nameKey(raw);
+    const {error}=await sb.from('report_names').upsert({name_key:key,display_name:raw,user_id:who||null,updated_at:new Date().toISOString()});
+    if(error){ tmSay(msg,'Couldn\'t save. Try again.','err'); return; }
+    state.reportNames[key]={display:raw,userId:who||null}; $('#rnNew').value=''; tmSay(msg,'Mapping added.','ok'); renderReportNames();
+  };
 
   // ---------- wiring ----------
   $('#uploadBtn').onclick=()=>{ clearShot(); state.pendingCredit=state.meId||''; openPaste(); };
@@ -2464,7 +2622,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       $('#signOut').hidden=false;
       state.user=makeUser(); state.assets=assetsApi; state.db=makeDb();
       state.canAnnounce=(state.profiles[state.meId]||{}).role==='manager';
-      $('#teamBtn').hidden=!state.canAnnounce; document.querySelector('.tabs').classList.add('five');
+      $('#teamBtn').hidden=!state.canAnnounce; $('#payBtn').hidden=false; document.querySelector('.tabs').classList.add('five');
       $('#annBtn').hidden=!state.canAnnounce; $('#composerIn').classList.toggle('admin',state.canAnnounce);
       const sbtn=$('#saveBtn'); if(sbtn) sbtn.disabled=false;
       setTimeout(()=>{ syncAlerts(); openHash(location.hash); loadRisk(); loadDevices(); },0);

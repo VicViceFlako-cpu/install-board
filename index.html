@@ -206,6 +206,16 @@ button{cursor:pointer}
 .po-amt input{width:78px;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 8px;text-align:right}
 .po-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .po-paid{font-size:.85rem;color:var(--done);white-space:nowrap}
+.po-paid.cb{color:var(--danger)}
+.pi-sum{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:12px 0}
+.pi-tot{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px;text-align:center}
+.pi-tot b{display:block;font-size:1.3rem}
+.pi-tot span{font-size:.75rem;color:var(--muted)}
+.pi-list{max-height:220px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:10px}
+.pi-row{font-size:.84rem;padding:4px 0;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:8px}
+.pi-row:first-child{border-top:0}
+.pi-row span{color:var(--muted);white-space:nowrap}
+.pi-hist{font-size:.85rem;padding:8px 0;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px}
 .wl-top{display:flex;gap:8px;margin-bottom:14px}
 .wl-top .btn{flex:none}
 .wl-top input{flex:1;min-width:0;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:44px}
@@ -489,6 +499,17 @@ body.on-chat .wrap{padding-bottom:140px}
   </div>
 
   <div id="viewTeam" hidden>
+    <section class="team-sec" id="payImport">
+      <h2>Import pay report</h2>
+      <p class="note">Upload the weekly Excel report. Internet orders match by MON, wireless lines by phone number. Nothing changes until you tap Apply.</p>
+      <div class="row-btns" style="margin-top:0">
+        <label class="btn btn-primary btn-small" for="payFile">Choose Excel file</label>
+        <input id="payFile" type="file" accept=".xlsx,.xls,.csv" style="position:absolute;width:1px;height:1px;opacity:0">
+      </div>
+      <div id="payMsg" class="team-msg" role="status"></div>
+      <div id="payPreview"></div>
+      <div id="payHistory"></div>
+    </section>
     <section class="team-sec" id="payouts">
       <h2>Payouts</h2>
       <p class="note">Installed orders waiting to be paid, by agent. Check them off and tap Mark paid. Agents get an alert when you do.</p>
@@ -829,7 +850,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     if(i.address){ const a=document.createElement('a'); a.href='https://maps.apple.com/?q='+encodeURIComponent(i.address); a.target='_blank'; a.rel='noopener'; a.textContent=i.address; row('Address',a); }
     if(i.phone){ const a=document.createElement('a'); a.href='tel:'+i.phone; a.textContent=fmtPhone(i.phone); row('Phone',a); }
     row('Verizon status', i.vzStatus||'');
-    if(st==='installed'&&(state.canAnnounce||i.agentId===state.meId)){ row('Payout', i.payoutStatus==='paid'? 'Paid '+fmtStamp(i.paidAt) : 'Not paid yet'); }
+    if(state.canAnnounce&&i.payoutStatus==='charged_back') row('Payout','Charged back '+fmtStamp(i.paidAt));
+    else if(st==='installed'&&(state.canAnnounce||i.agentId===state.meId)&&i.payoutStatus!=='charged_back') row('Payout', i.payoutStatus==='paid'? 'Paid '+fmtStamp(i.paidAt) : 'Not paid yet');
     if(st!=='scheduled'&&i.statusAt) row(st==='installed'?'Marked installed':'Marked cancelled', fmtStamp(i.statusAt)+(i.statusBy?' by '+personName(i.statusBy):''));
     row('Added', [fmtStamp(i.createdAt), i.createdBy?'by '+personName(i.createdBy):''].filter(Boolean).join(' '));
     sh.append(dl);
@@ -1144,7 +1166,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     $('#viewInstalls').hidden=t!=='installs'; $('#viewChat').hidden=t!=='chat'; $('#viewCal').hidden=t!=='calendar'; $('#viewTeam').hidden=t!=='team'; $('#viewWireless').hidden=t!=='wireless';
     if(t==='wireless') renderWireless(); $('#viewLeaders').hidden=t!=='leaders';
     if(t==='leaders') renderLeaders();
-    if(t==='team'){ loadTeam(); loadSettings(); }
+    if(t==='team'){ loadTeam(); loadSettings(); loadPayHistory(); }
     if(t==='calendar') renderCal();
     $('#composer').hidden=t!=='chat'; document.body.classList.toggle('on-chat',t==='chat');
     if(t==='chat'){ renderChat(); markSeen(); requestAnimationFrame(()=>window.scrollTo(0,document.body.scrollHeight)); }
@@ -1494,7 +1516,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       rows.forEach(r=>{
         lines.push([r.mon||'',r.customer,nm[r.agent_id]||'',ymd(r.sale_date),ymd(r.install_date),r.appt_window,
           r.status==='installed'?'Installed':r.status==='cancelled'?'Cancelled':'Scheduled',r.vz_status,r.address,fmtPhone(r.phone),
-          r.reschedule_count||0,nm[r.created_by]||'',stamp(r.created_at),stamp(r.status_at),nm[r.status_by]||'',r.status!=='installed'&&r.payout_status!=='paid'?'':(r.payout_status==='paid'?'Paid':'Unpaid'),stamp(r.paid_at)].map(csvCell).join(','));
+          r.reschedule_count||0,nm[r.created_by]||'',stamp(r.created_at),stamp(r.status_at),nm[r.status_by]||'',r.status!=='installed'&&r.payout_status==='unpaid'?'':(r.payout_status==='paid'?'Paid':r.payout_status==='charged_back'?'Charged back':'Unpaid'),stamp(r.paid_at)].map(csvCell).join(','));
       });
       const name='install-board-orders-'+todayISO()+'.csv';
       exportFile=new File(['\uFEFF'+lines.join('\r\n')],name,{type:'text/csv'});
@@ -1518,7 +1540,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         const ls=(lines||[]).filter(l=>l.sale_id===sale.id).sort((a,b)=>String(a.created_at).localeCompare(String(b.created_at)));
         ls.forEach((l,idx)=>{ count++;
           out.push([sale.customer,nm[sale.agent_id]||'',ymd(sale.sale_date),sale.line_count,idx+1,fmtPhone(l.phone),
-            l.payout_status==='paid'?'Paid':'Unpaid',stamp(l.paid_at),stamp(sale.created_at)].map(csvCell).join(','));
+            l.payout_status==='paid'?'Paid':l.payout_status==='charged_back'?'Charged back':'Unpaid',stamp(l.paid_at),stamp(sale.created_at)].map(csvCell).join(','));
         });
       });
       exportFile=new File(['\uFEFF'+out.join('\r\n')],'wireless-lines-'+todayISO()+'.csv',{type:'text/csv'});
@@ -1709,11 +1731,11 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   function renderPayouts(force){
     if(!state.canAnnounce||$('#viewTeam').hidden) return;
     const box=$('#poList'); if(!force&&box.contains(document.activeElement)&&document.activeElement.tagName==='INPUT'&&document.activeElement.type!=='checkbox') return;
-    const unpaid=(state.installs||[]).filter(i=>i.status==='installed'&&i.payoutStatus!=='paid'&&i.agentId);
-    const paid=(state.installs||[]).filter(i=>i.payoutStatus==='paid'&&i.agentId);
+    const unpaid=(state.installs||[]).filter(i=>i.status==='installed'&&(i.payoutStatus||'unpaid')==='unpaid'&&i.agentId);
+    const paid=(state.installs||[]).filter(i=>(i.payoutStatus==='paid'||i.payoutStatus==='charged_back')&&i.agentId);
     const saleOf={}; (state.wireless||[]).forEach(w=>saleOf[w.id]=w);
     const wl=(state.wlines||[]).map(l=>({...l,sale:saleOf[l.saleId]})).filter(l=>l.sale&&l.sale.agentId);
-    const wlUnpaid=wl.filter(l=>l.payoutStatus!=='paid'&&l.status==='active'), wlPaid=wl.filter(l=>l.payoutStatus==='paid');
+    const wlUnpaid=wl.filter(l=>(l.payoutStatus||'unpaid')==='unpaid'&&l.status==='active'), wlPaid=wl.filter(l=>l.payoutStatus==='paid'||l.payoutStatus==='charged_back');
     const ids=[...new Set([...unpaid.map(i=>i.agentId),...paid.map(i=>i.agentId),...wl.map(l=>l.sale.agentId)])];
     const sumBits=[unpaid.length?unpaid.length+(unpaid.length===1?' install':' installs'):'', wlUnpaid.length?wlUnpaid.length+(wlUnpaid.length===1?' wireless line':' wireless lines'):''].filter(Boolean);
     $('#poSum').textContent=sumBits.length? sumBits.join(' · ')+' unpaid' : 'Everyone is paid up. 🎉';
@@ -1782,8 +1804,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
             if(showP) g.wp.slice().sort((a,b)=>String(b.paidAt).localeCompare(String(a.paidAt))).forEach(l=>{
               const line=document.createElement('div'); line.className='po-line'; line.style.gridTemplateColumns='1fr auto auto';
               const c=document.createElement('div'); c.className='c'; const b2=document.createElement('b'); b2.textContent=fmtPhone(l.phone);
-              const sm=document.createElement('small'); sm.textContent=(l.sale.customer||'Wireless')+' · paid '+fmtStamp(l.paidAt); c.append(b2,sm);
-              const am=document.createElement('span'); am.className='po-paid'; am.textContent='Paid';
+              const cbL=l.payoutStatus==='charged_back';
+              const sm=document.createElement('small'); sm.textContent=(l.sale.customer||'Wireless')+' · '+(cbL?'charged back ':'paid ')+fmtStamp(l.paidAt); c.append(b2,sm);
+              const am=document.createElement('span'); am.className='po-paid'+(cbL?' cb':''); am.textContent=cbL?'Charged back':'Paid';
               const un=document.createElement('button'); un.type='button'; un.className='btn btn-ghost btn-small'; un.textContent='Undo';
               un.onclick=async()=>{ if(!confirm('Move this line back to unpaid?')) return; const {error}=await sb.rpc('mark_lines_paid',{p_ids:[l.id],p_paid:false}); toast(error?'Couldn\'t save. Try again.':'Moved back to unpaid'); };
               line.append(c,am,un); body.append(line);
@@ -1791,8 +1814,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
             if(showP) g.p.forEach(i=>{
               const line=document.createElement('div'); line.className='po-line'; line.style.gridTemplateColumns='1fr auto auto';
               const c=document.createElement('div'); c.className='c'; const cbn=document.createElement('b'); cbn.textContent=i.customer||'Order';
-              const sm=document.createElement('small'); sm.textContent='Paid '+fmtStamp(i.paidAt)+(i.mon?' · '+i.mon:''); c.append(cbn,sm);
-              const am=document.createElement('span'); am.className='po-paid'; am.textContent='Paid';
+              const cbI=i.payoutStatus==='charged_back';
+              const sm=document.createElement('small'); sm.textContent=(cbI?'Charged back ':'Paid ')+fmtStamp(i.paidAt)+(i.mon?' · '+i.mon:''); c.append(cbn,sm);
+              const am=document.createElement('span'); am.className='po-paid'+(cbI?' cb':''); am.textContent=cbI?'Charged back':'Paid';
               const un=document.createElement('button'); un.type='button'; un.className='btn btn-ghost btn-small'; un.textContent='Undo';
               un.onclick=async()=>{ if(!confirm('Move '+(i.customer||'this order')+' back to unpaid?')) return; const {error}=await sb.rpc('mark_paid',{p_ids:[i.id],p_paid:false}); toast(error?'Couldn\'t save. Try again.':'Moved back to unpaid'); };
               line.append(c,am,un); body.append(line);
@@ -1929,7 +1953,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       const a=document.createElement('a'); a.href='tel:'+l.phone; a.textContent='Line '+(idx+1)+': '+fmtPhone(l.phone); a.style.color='var(--signal)';
       const kind=l.device==='new'?'New device':'BYOD · '+(l.sim==='physical'?'physical SIM':'eSIM');
       const stTxt=l.status==='active'?'Active':l.status==='cancelled'?'Cancelled':'Pending activation';
-      const sm=document.createElement('small'); sm.textContent=kind+' · '+stTxt+' · '+(l.payoutStatus==='paid'?'paid '+fmtStamp(l.paidAt):'not paid yet');
+      const payTxt=l.payoutStatus==='paid'?'paid '+fmtStamp(l.paidAt):l.payoutStatus==='charged_back'?(state.canAnnounce?'charged back '+fmtStamp(l.paidAt):''):'not paid yet';
+      const sm=document.createElement('small'); sm.textContent=[kind,stTxt,payTxt].filter(Boolean).join(' · ');
       li.append(a,sm);
       if(wlCanAct(w)){
         const acts=document.createElement('div'); acts.className='line-acts';
@@ -1969,7 +1994,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     }
     if(state.canAnnounce){
       const acts=document.createElement('div'); acts.className='po-actions';
-      const unpaid=ls.filter(l=>l.payoutStatus!=='paid'&&l.status==='active');
+      const unpaid=ls.filter(l=>(l.payoutStatus||'unpaid')==='unpaid'&&l.status==='active');
       if(unpaid.length){ const b=document.createElement('button'); b.type='button'; b.className='btn btn-primary btn-small'; b.textContent='Mark '+unpaid.length+(unpaid.length===1?' line paid':' lines paid');
         b.onclick=async()=>{ b.disabled=true; const {error}=await sb.rpc('mark_lines_paid',{p_ids:unpaid.map(l=>l.id),p_paid:true}); toast(error?'Couldn\'t save. Try again.':'Marked paid'); closeDetail(); }; acts.append(b); }
       const del=document.createElement('button'); del.type='button'; del.className='btn btn-ghost btn-small'; del.textContent='Delete sale';
@@ -2099,6 +2124,123 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     acts.append(save,cancel); form.append(acts);
     sh.append(form,msg);
     wrap.hidden=false; document.body.style.overflow='hidden'; sh.scrollTop=0;
+  }
+
+  // ---------- pay report import (managers) ----------
+  let payPlan=null;
+  function loadXLSX(){
+    if(window.XLSX) return Promise.resolve(window.XLSX);
+    return new Promise((res,rej)=>{ const sc=document.createElement('script');
+      sc.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      sc.onload=()=>res(window.XLSX); sc.onerror=()=>rej(new Error('Couldn\'t load the spreadsheet reader. Check your connection.')); document.head.append(sc); });
+  }
+  const norm=v=>String(v==null?'':v).trim();
+  const digits10=v=>norm(v).replace(/\D/g,'').slice(-10);
+  function payRowKind(r){
+    const cat=norm(r.Category).toLowerCase(), amt=parseFloat(norm(r.PaidAmount).replace(/[^0-9.-]/g,''));
+    return (cat.includes('chargeback')||/fchb/i.test(norm(r.Comments))||(isFinite(amt)&&amt<0))?'cb':'paid';
+  }
+  $('#payFile').onchange=async e=>{
+    const file=e.target.files&&e.target.files[0]; e.target.value='';
+    if(!file) return;
+    const msg=$('#payMsg'); tmSay(msg,'Reading '+file.name+'…');
+    $('#payPreview').innerHTML=''; payPlan=null;
+    try{
+      const XLSX=await loadXLSX();
+      const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
+      const byMon={}; (state.installs||[]).forEach(i=>{ if(i.mon) byMon[norm(i.mon).toUpperCase()]=i; });
+      const byPhone={}, saleOf={};
+      (state.wireless||[]).forEach(w=>saleOf[w.id]=w);
+      (state.wlines||[]).forEach(l=>{ const d=digits10(l.phone); if(d) (byPhone[d]=byPhone[d]||[]).push(l); });
+      const plan={installsPaid:new Map(),installsCb:new Map(),linesPaid:new Map(),linesCb:new Map()}, missing=[], already=[];
+      let used=0;
+      rows.forEach(r=>{
+        const doc=norm(r.DocumentNum||r.documentnum||r['Document Num']);
+        if(!doc||!norm(r.Status)) return;
+        used++;
+        const kind=payRowKind(r), who=norm(r.CustomerName)||norm(r.SalesAgentName)||doc, mon=doc.toUpperCase();
+        if(/^[A-Z]{2}\d{6,}$/.test(mon)){
+          const i=byMon[mon];
+          if(!i){ missing.push({doc:mon,who}); return; }
+          (kind==='cb'?plan.installsCb:plan.installsPaid).set(i.id,{label:i.customer||mon});
+          if(kind==='cb') plan.installsPaid.delete(i.id);
+          return;
+        }
+        const ph=digits10(doc);
+        if(ph.length===10){
+          const ls=byPhone[ph];
+          if(!ls||!ls.length){ missing.push({doc:fmtPhone(ph),who}); return; }
+          ls.forEach(l=>{ const sale=saleOf[l.saleId]||{};
+            (kind==='cb'?plan.linesCb:plan.linesPaid).set(l.id,{label:(sale.customer||'Wireless')+' · '+fmtPhone(l.phone)});
+            if(kind==='cb') plan.linesPaid.delete(l.id); });
+          return;
+        }
+        missing.push({doc,who});
+      });
+      const drop=(m,st,arr)=>{ [...m.keys()].forEach(id=>{ const rec=arr.find(x=>x.id===id);
+        if(rec&&rec.payoutStatus===st){ m.delete(id); already.push(1); } }); };
+      drop(plan.installsPaid,'paid',state.installs||[]); drop(plan.installsCb,'charged_back',state.installs||[]);
+      drop(plan.linesPaid,'paid',state.wlines||[]); drop(plan.linesCb,'charged_back',state.wlines||[]);
+      payPlan={plan,file:file.name,missing,already};
+      renderPayPreview();
+      tmSay(msg,used+' rows read from '+file.name+'.','ok');
+    }catch(err){ tmSay(msg,err.message||'Couldn\'t read that file.','err'); }
+  };
+  function renderPayPreview(){
+    const box=$('#payPreview'); box.innerHTML=''; if(!payPlan) return;
+    const {plan,missing,already}=payPlan;
+    const paidN=plan.installsPaid.size+plan.linesPaid.size, cbN=plan.installsCb.size+plan.linesCb.size;
+    const sum=document.createElement('div'); sum.className='pi-sum';
+    [[paidN,'to mark paid'],[cbN,'chargebacks'],[missing.length,'not on the board'],[already.length,'already matched']]
+      .forEach(([v,l])=>{ const d=document.createElement('div'); d.className='pi-tot'; const b=document.createElement('b'); b.textContent=v; const sp=document.createElement('span'); sp.textContent=l; d.append(b,sp); sum.append(d); });
+    box.append(sum);
+    const list=document.createElement('div'); list.className='pi-list';
+    const add=(label,tag)=>{ const r=document.createElement('div'); r.className='pi-row'; const a=document.createElement('div'); a.textContent=label; const b=document.createElement('span'); b.textContent=tag; r.append(a,b); list.append(r); };
+    plan.installsPaid.forEach(v=>add(v.label,'paid'));
+    plan.linesPaid.forEach(v=>add(v.label,'paid'));
+    plan.installsCb.forEach(v=>add(v.label,'chargeback'));
+    plan.linesCb.forEach(v=>add(v.label,'chargeback'));
+    missing.forEach(m=>add(m.doc+' — '+m.who,'not found'));
+    if(list.children.length) box.append(list);
+    const acts=document.createElement('div'); acts.className='po-actions';
+    const go=document.createElement('button'); go.type='button'; go.className='btn btn-primary btn-small'; go.disabled=!(paidN+cbN);
+    go.textContent=paidN+cbN?'Apply to '+(paidN+cbN)+' orders':'Nothing to apply';
+    go.onclick=async()=>{
+      if(!confirm('Mark '+paidN+' paid and '+cbN+' charged back?')) return;
+      go.disabled=true; go.textContent='Applying…';
+      const {data,error}=await sb.rpc('apply_pay_report',{p_file:payPlan.file,
+        p_installs_paid:[...plan.installsPaid.keys()], p_installs_cb:[...plan.installsCb.keys()],
+        p_lines_paid:[...plan.linesPaid.keys()], p_lines_cb:[...plan.linesCb.keys()]});
+      if(error){ tmSay($('#payMsg'),'Couldn\'t apply. Try again.','err'); go.disabled=false; return; }
+      toast('Pay report applied'); payPlan=null; $('#payPreview').innerHTML='';
+      tmSay($('#payMsg'),'Applied: '+data.installs_paid+' installs paid · '+data.lines_paid+' lines paid · '+(data.installs_charged_back+data.lines_charged_back)+' charged back.','ok');
+      loadPayHistory();
+    };
+    const cancel=document.createElement('button'); cancel.type='button'; cancel.className='btn btn-ghost btn-small'; cancel.textContent='Cancel';
+    cancel.onclick=()=>{ payPlan=null; box.innerHTML=''; $('#payMsg').textContent=''; };
+    acts.append(go,cancel); box.append(acts);
+  }
+  async function loadPayHistory(){
+    const box=$('#payHistory'); if(!box||!state.canAnnounce) return;
+    const {data}=await sb.from('pay_imports').select('*').order('imported_at',{ascending:false}).limit(6);
+    box.innerHTML='';
+    if(!data||!data.length) return;
+    const h=document.createElement('h3'); h.style.cssText='font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:18px 0 0'; h.textContent='Recent imports'; box.append(h);
+    data.forEach(im=>{
+      const row=document.createElement('div'); row.className='pi-hist';
+      const c=im.counts||{}, tot=(c.installs_paid||0)+(c.lines_paid||0), cb=(c.installs_charged_back||0)+(c.lines_charged_back||0);
+      const t=document.createElement('div');
+      t.textContent=(im.file_name||'Pay report')+' — '+tot+' paid'+(cb?', '+cb+' charged back':'')+' · '+fmtStamp(im.imported_at)+(im.undone_at?' (undone)':'');
+      row.append(t);
+      if(!im.undone_at){
+        const u=document.createElement('button'); u.type='button'; u.className='btn btn-ghost btn-small'; u.textContent='Undo';
+        u.onclick=async()=>{ if(!confirm('Undo this import? Orders go back to how they were before.')) return;
+          const {error}=await sb.rpc('undo_pay_import',{p_id:im.id}); toast(error?'Couldn\'t undo. Try again.':'Import undone'); loadPayHistory(); };
+        row.append(u);
+      }
+      box.append(row);
+    });
   }
 
   // ---------- wiring ----------

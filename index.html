@@ -2195,6 +2195,12 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   const norm=v=>String(v==null?'':v).trim();
   // the report masks most names as "VERIZON CUSTOMER" — prefer the name on the board
   const genericName=n=>!n||/^(verizon\s+)?customer$/i.test(n.trim());
+  // agents are paid on the first Friday on or after the report date — the report comes first
+  function nearestFriday(isoStr){
+    const d=parseISO(isoStr); if(!d) return isoStr||'';
+    d.setDate(d.getDate()+((5-d.getDay()+7)%7));
+    return iso(d);
+  }
   // wireless rows repeat per commission type; keep the plan name, drop the spiff/base rows
   const isSpiffish=p=>/spiff/i.test(p)||/^smartphone$/i.test(p.trim());
   const planTitle=p=>p.replace(/\s+/g,' ').trim().toLowerCase().replace(/\b([a-z])/g,(m,c)=>c.toUpperCase());
@@ -2240,7 +2246,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         const repName=norm(r.SalesAgentName), matchedAgent=byName[nameKey(repName)]||'';
         if(repName&&!matchedAgent) unknownNames.add(repName);
         const rowKind=/^[A-Z]{2}\d{6,}$/.test(mon)?'internet':(digits10(doc).length===10?'wireless':'other');
-        const payDate=xlDate(r.PaymentDate), prod=norm(r.Product)||norm(r.Program);
+        const payDate=nearestFriday(xlDate(r.PaymentDate)), prod=norm(r.Product)||norm(r.Program);
         // one statement line per order or per phone number, however many commission rows it has
         const itemKey=(rowKind==='wireless'?'w:'+digits10(doc):rowKind==='internet'?'i:'+mon:'o:'+doc)+'|'+payDate;
         let item=itemsBy.get(itemKey);

@@ -392,7 +392,7 @@ body.on-chat .wrap{padding-bottom:140px}
 .al-list{margin:8px 0 0;padding-left:1.1em;color:var(--muted);font-size:.92rem}
 .al-list li{margin:3px 0}
 .al-state{font-weight:600;margin:4px 0 10px}
-.whoami button{background:none;border:0;color:var(--muted);font-size:.9rem;padding:4px 0}
+.whoami button,.who-btns a{background:none;border:0;color:var(--muted);font-size:.9rem;padding:4px 0;text-decoration:none}
 [hidden]{display:none!important}
 
 @media (prefers-reduced-motion:reduce){.toast{transition:none}}
@@ -420,7 +420,7 @@ body.on-chat .wrap{padding-bottom:140px}
   </div>
 </div>
 <div class="wrap">
-  <div class="whoami"><h1>Install Board</h1><div class="who-btns"><button id="payBtn" hidden>🧾 Pay</button><button id="teamBtn" hidden>⚙️ Team</button><button id="alertsBtn" hidden>🔔 Alerts</button><button id="signOut" hidden>Sign out</button></div></div>
+  <div class="whoami"><h1>Install Board</h1><div class="who-btns"><a id="trainingBtn" href="https://salessuperstarai.com" target="_blank" rel="noopener">🎓 Training</a><button id="payBtn" hidden>🧾 Pay</button><button id="teamBtn" hidden>⚙️ Team</button><button id="alertsBtn" hidden>🔔 Alerts</button><button id="signOut" hidden>Sign out</button></div></div>
   <p class="sub">Your team's WiFi installs and chat in one place.</p>
 
   <nav class="tabs" role="tablist">
@@ -429,7 +429,6 @@ body.on-chat .wrap{padding-bottom:140px}
     <button class="tab" role="tab" id="tabWireless" aria-selected="false">Wireless</button>
     <button class="tab" role="tab" id="tabChat" aria-selected="false">Chat<span id="unread" class="badge" hidden></span></button>
     <button class="tab" role="tab" id="tabLeaders" aria-selected="false">Leaders</button>
-    <a class="tab tab-link" id="tabTraining" href="https://salessuperstarai.com" target="_blank" rel="noopener">Training ↗</a>
     <a class="tab tab-link" id="tabPortal" href="https://www22.verizon.com/CoFEE/Content/PreOrderingD2D/SSOLogin/Login.aspx" target="_blank" rel="noopener">Optix ↗</a>
   </nav>
 

@@ -2472,11 +2472,12 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   state.payFor=null;
   async function openPay(agentId){
     state.detailId=null;
-    const who=agentId||state.meId;
+    const master=agentId==='__master'&&state.isOwner;
+    const who=master?state.meId:(agentId||state.meId);
     state.payFor=who;
     const wrap=$('#sheet'), sh=wrap.querySelector('.sheet'); sh.innerHTML='';
     const head=document.createElement('div'); head.className='sheet-head';
-    const h=document.createElement('h2'); h.id='sheetTitle'; h.textContent=state.canAnnounce&&who!==state.meId?agentLabel(who)+'\u2019s pay reports':'My pay reports';
+    const h=document.createElement('h2'); h.id='sheetTitle'; h.textContent=master?'Master list':(state.canAnnounce&&who!==state.meId?agentLabel(who)+'\u2019s pay reports':'My pay reports');
     const x=document.createElement('button'); x.className='sheet-x'; x.type='button'; x.setAttribute('aria-label','Close'); x.textContent='×'; x.onclick=closeDetail;
     head.append(h,x); sh.append(head);
     wrap.hidden=false; document.body.style.overflow='hidden'; sh.scrollTop=0;
@@ -2484,10 +2485,11 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       const pick=document.createElement('select'); pick.style.cssText='font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;min-height:44px;width:100%;margin-bottom:10px';
       Object.keys(state.profiles||{}).sort((a,b)=>agentLabel(a).localeCompare(agentLabel(b))).forEach(id=>{
         const o=document.createElement('option'); o.value=id; o.textContent=agentLabel(id)+(id===state.meId?' (you)':''); pick.append(o); });
-      pick.value=who; pick.onchange=()=>openPay(pick.value); sh.append(pick);
+      if(state.isOwner){ const o=document.createElement('option'); o.value='__master'; o.textContent='\uD83D\uDCCB Master list \u2014 everyone'; pick.prepend(o); }
+      pick.value=master?'__master':who; pick.onchange=()=>openPay(pick.value); sh.append(pick);
     }
+    if(master){ renderMaster(sh); return; }
     if(state.canAnnounce) renderUnbilled(sh);
-    if(state.isOwner) renderMaster(sh);
     const body=document.createElement('div'); body.textContent='Loading…'; body.className='lb-sub'; sh.append(body);
     let q=sb.from('pay_report_items').select('payment_date,doc_num,customer,product,kind,outcome,risk').order('payment_date',{ascending:false}).limit(500);
     if(state.canAnnounce) q=q.eq('agent_id',who).eq('outcome','paid');
@@ -2555,9 +2557,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     });
   }
   // ---------- master commission list (owner only) ----------
-  // Every paid item for one pay date, all agents together, with amounts.
+  // Every paid item for one pay date, all agents together. No dollar figures.
   async function renderMaster(sh){
-    const box=document.createElement('div'); box.className='unbilled'; box.hidden=true; sh.append(box);
+    const box=document.createElement('div'); box.hidden=true; sh.append(box);
     const draw=async()=>{
       const args={}; if(state.masterDate) args.p_date=state.masterDate;
       const {data,error}=await sb.rpc('pay_master',args);
@@ -2577,7 +2579,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       }
       box.append(head);
       const note=document.createElement('p'); note.className='lb-sub';
-      note.textContent=rows.length? ('Paid '+fmtLong(data.date)+' · '+data.count+' item'+(data.count===1?'':'s')+' · $'+Number(data.total||0).toFixed(2)+' total')
+      note.textContent=rows.length? ('Paid '+fmtLong(data.date)+' · '+data.count+' item'+(data.count===1?'':'s')+' across '+(new Set(rows.map(r=>r.agent)).size)+' people')
                                   : ('Nothing paid on '+fmtLong(data.date)+'.');
       box.append(note);
       if(!rows.length) return;
@@ -2590,12 +2592,12 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
           const h=document.createElement('li'); h.className='ml-agent';
           const hb=document.createElement('b'); hb.textContent=r.agent;
           const hs=document.createElement('small');
-          hs.textContent=sub.length+' item'+(sub.length===1?'':'s')+' · $'+sub.reduce((n,x)=>n+Number(x.amount||0),0).toFixed(2);
+          hs.textContent=sub.length+' item'+(sub.length===1?'':'s');
           h.append(hb,hs); ul.append(h);
         }
         const li=document.createElement('li');
         const b=document.createElement('b');
-        b.textContent=(r.customer||'—')+'  $'+Number(r.amount||0).toFixed(2);
+        b.textContent=r.customer||'—';
         if(r.risk){ b.append(' ',riskTag(r.risk)); }
         const sm=document.createElement('small');
         sm.textContent=[r.kind==='wireless'?fmtPhone(r.doc_num):r.doc_num, r.product||''].filter(Boolean).join(' · ');
@@ -2604,10 +2606,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       box.append(ul);
       const csv=document.createElement('button'); csv.className='btn btn-ghost btn-small'; csv.textContent='⬇︎ Save / share CSV';
       csv.onclick=()=>{
-        const cols=['Agent','Customer','Number','Product','Type','Risk','Amount'];
+        const cols=['Agent','Customer','Number','Product','Type','Risk'];
         const lines=[cols.map(csvCell).join(',')];
-        rows.forEach(r=>lines.push([r.agent,r.customer||'',r.doc_num||'',r.product||'',r.kind||'',r.risk||'',Number(r.amount||0).toFixed(2)].map(csvCell).join(',')));
-        lines.push(['TOTAL','','','','','',Number(data.total||0).toFixed(2)].map(csvCell).join(','));
+        rows.forEach(r=>lines.push([r.agent,r.customer||'',r.doc_num||'',r.product||'',r.kind||'',r.risk||''].map(csvCell).join(',')));
         const f=new File(['\uFEFF'+lines.join('\r\n')],'commissions-'+data.date+'.csv',{type:'text/csv'});
         if(navigator.canShare&&navigator.canShare({files:[f]})){ navigator.share({files:[f],title:f.name}).catch(()=>{}); return; }
         const url=URL.createObjectURL(f); const a=document.createElement('a'); a.href=url; a.download=f.name; document.body.append(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),30000);

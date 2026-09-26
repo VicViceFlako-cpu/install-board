@@ -265,6 +265,12 @@ button{cursor:pointer}
 .badge{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--today);color:#1B1400;font-size:.75rem;margin-left:6px;vertical-align:1px}
 
 /* chat */
+.conv-bar{display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:2px 0 12px;scrollbar-width:none}
+.conv-bar::-webkit-scrollbar{display:none}
+.conv{flex:0 0 auto;display:flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:8px 14px;font:inherit;font-size:.9rem;font-weight:600;min-height:40px;white-space:nowrap}
+.conv[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#07222b}
+.conv .dot{width:8px;height:8px;border-radius:50%;background:var(--signal);flex:0 0 auto}
+.conv[aria-selected="true"] .dot{background:#07222b}
 .chat{display:flex;flex-direction:column;gap:2px;padding-bottom:12px}
 .day-sep{align-self:center;color:var(--muted);font-size:.82rem;margin:14px 0 6px}
 .msg{display:grid;grid-template-columns:34px 1fr;gap:10px;padding:6px 0;max-width:100%}
@@ -602,6 +608,7 @@ body.on-chat .wrap{padding-bottom:140px}
   </div>
 
   <div id="viewChat" hidden>
+    <div id="convBar" class="conv-bar" role="tablist" aria-label="Conversations"></div>
     <div id="chat" class="chat" aria-live="polite"></div>
   </div>
 </div>
@@ -626,7 +633,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 (function(){
   const $ = s => document.querySelector(s);
   const WINDOWS = ['8:00 AM to 12:00 PM','9:00 AM to 1:00 PM','11:00 AM to 3:00 PM','12:00 PM to 4:00 PM','1:00 PM to 5:00 PM','3:00 PM to 7:00 PM','4:00 PM to 8:00 PM','8:00 AM to 5:00 PM'];
-  const state = { installs: [], db: null, sample: null, canImages: false, showPast: false, drafts: null, shotUrl: null, openItem: null, openMode: 'actions', rescheduleDraft: '', rescheduleWin: '', rescheduleWinOther: false, names: {}, pendingCredit: '', user: null, meId: null, assets: null, messages: [], tab: 'installs', profiles: {}, calMonth: null, calSel: '', attach: null, announcements: [], canAnnounce: false, announceMode: false, mentionMap: {}, suggestions: [], suggestIdx: 0 };
+  const state = { installs: [], dmWith: '', db: null, sample: null, canImages: false, showPast: false, drafts: null, shotUrl: null, openItem: null, openMode: 'actions', rescheduleDraft: '', rescheduleWin: '', rescheduleWinOther: false, names: {}, pendingCredit: '', user: null, meId: null, assets: null, messages: [], tab: 'installs', profiles: {}, calMonth: null, calSel: '', attach: null, announcements: [], canAnnounce: false, announceMode: false, mentionMap: {}, suggestions: [], suggestIdx: 0 };
   const ICON_OK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
   const ICON_UNDO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 010 10h-3"/></svg>';
   const ICON_DEL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>';
@@ -1281,12 +1288,52 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 
   // ---------- tabs ----------
-  function lastSeen(){ try{ return localStorage.getItem('chatSeen')||''; }catch(_){ return ''; } }
-  function markSeen(){ const it=streamItems(); const m=it[it.length-1]; if(!m) return; try{ localStorage.setItem('chatSeen',m.createdAt||''); }catch(_){} updateBadge(); }
+  // Each conversation remembers its own read mark: the team channel, then one per person.
+  const seenKey=who=>who?'chatSeen:'+who:'chatSeen';
+  function lastSeen(who){ try{ return localStorage.getItem(seenKey(who===undefined?state.dmWith:who))||''; }catch(_){ return ''; } }
+  function markSeen(){
+    const it=streamItems(); const m=it[it.length-1]; if(!m) return;
+    try{ localStorage.setItem(seenKey(state.dmWith),m.createdAt||''); }catch(_){}
+    updateBadge(); renderConvBar();
+  }
+  // Messages in one conversation: the team channel, or the two sides of a direct chat.
+  function inThread(m,who){
+    const dm=m.dmWith||'';
+    if(!who) return !dm;
+    if(!dm) return false;
+    return (m.authorId===state.meId&&dm===who)||(m.authorId===who&&dm===state.meId);
+  }
+  function unreadIn(who){
+    const seen=lastSeen(who);
+    return (state.messages||[]).filter(m=>inThread(m,who)&&(m.createdAt||'')>seen&&m.authorId!==state.meId);
+  }
   function updateBadge(){
-    const seen=lastSeen(); const fresh=state.tab==='chat'?[]:streamItems().filter(m=>(m.createdAt||'')>seen && m.authorId!==state.meId);
-    const n=fresh.length, hit=fresh.some(m=>Array.isArray(m.mentions)&&state.meId&&m.mentions.includes(state.meId));
+    let n=0, hit=false;
+    const threads=[''].concat(Object.keys(state.profiles||{}).filter(id=>id!==state.meId));
+    threads.forEach(w=>{
+      if(state.tab==='chat'&&w===state.dmWith) return;
+      const f=w? unreadIn(w) : streamItems('').filter(m=>(m.createdAt||'')>lastSeen('')&&m.authorId!==state.meId);
+      n+=f.length;
+      if(f.some(m=>w||(Array.isArray(m.mentions)&&state.meId&&m.mentions.includes(state.meId)))) hit=true;
+    });
     const b=$('#unread'); b.hidden=!n; b.textContent=(hit?'@ ':'')+(n>99?'99+':n);
+  }
+  function renderConvBar(){
+    const bar=$('#convBar'); if(!bar) return; bar.innerHTML='';
+    const mk=(who,label)=>{
+      const b=document.createElement('button'); b.type='button'; b.className='conv'; b.setAttribute('role','tab');
+      b.setAttribute('aria-selected', String(state.dmWith===who));
+      b.textContent=label;
+      const u=who? unreadIn(who).length : streamItems('').filter(m=>(m.createdAt||'')>lastSeen('')&&m.authorId!==state.meId).length;
+      if(u&&state.dmWith!==who){ const d=document.createElement('span'); d.className='dot'; b.append(d); }
+      b.onclick=()=>{ if(state.dmWith===who) return; state.dmWith=who; renderChat(); markSeen(); requestAnimationFrame(()=>window.scrollTo(0,document.body.scrollHeight)); };
+      bar.append(b);
+    };
+    mk('','# Team');
+    Object.keys(state.profiles||{})
+      .filter(id=>id!==state.meId)
+      .sort((a,b)=>agentLabel(a).localeCompare(agentLabel(b)))
+      .forEach(id=>mk(id,agentLabel(id)));
   }
   function showTab(t){
     state.tab=t;
@@ -1371,6 +1418,12 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   let chatRenderToken=0;
   async function renderChat(){
     if(state.tab!=='chat') return;
+    renderConvBar();
+    const dm=state.dmWith;
+    // A direct chat has no announcements and no team-wide audience.
+    $('#annBtn').hidden=!state.canAnnounce||!!dm;
+    if(dm&&state.announceMode){ state.announceMode=false; $('#annBtn').setAttribute('aria-pressed','false'); $('#photoBtn').disabled=false; }
+    $('#msgInput').placeholder=dm? ('Message '+agentLabel(dm)) : 'Message the team';
     const token=++chatRenderToken;
     const all=streamItems();
     const ids=[...new Set(all.flatMap(m=>[m.authorId,...(m.mentions||[])]).filter(Boolean))];
@@ -1380,7 +1433,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const box=$('#chat'); box.innerHTML='';
     if(!all.length){
       const e=document.createElement('div'); e.className='empty';
-      e.textContent=state.db?'No messages yet. Say hi to the team, or paste a sale to share it.':'Chat isn\'t connected in this view.';
+      e.textContent=!state.db?'Chat isn\'t connected in this view.':(dm?('No messages with '+agentLabel(dm)+' yet. Only the two of you can see this conversation.'):'No messages yet. Say hi to the team, or paste a sale to share it.');
       box.append(e); return;
     }
     let prevDay='', prev=null;
@@ -1462,7 +1515,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       } else {
         let imageId='';
         if(state.attach){ btn.textContent='Uploading…'; const up=await state.assets.upload(state.attach); imageId=up.id; }
-        await state.db.collection('messages').add({authorId:state.meId||'', text, imageId, mentions, createdAt:new Date().toISOString()});
+        await state.db.collection('messages').add({authorId:state.meId||'', text, imageId, mentions, dmWith:state.dmWith||'', createdAt:new Date().toISOString()});
       }
       msgInput.value=''; msgInput.style.height='auto'; setAttach(null); state.mentionMap={};
     }catch(e){ toast(e&&e.code==='too_large'?'That photo is too big to send.':writeErr(e)); }
@@ -1482,13 +1535,16 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     }
     if(last<text.length) el.append(document.createTextNode(text.slice(last)));
   }
-  function streamItems(){
-    return [...state.messages,...state.announcements.map(a=>({...a,kind:'announcement'}))]
-      .sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
+  function streamItems(who){
+    const w=who===undefined?state.dmWith:who;
+    const msgs=(state.messages||[]).filter(m=>inThread(m,w));
+    // Announcements belong to the team channel only.
+    const anns=w? [] : state.announcements.map(a=>({...a,kind:'announcement'}));
+    return [...msgs,...anns].sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
   }
   async function postSystem(text){
     if(!state.db) return;
-    try{ await state.db.collection('messages').add({authorId:state.meId||'', text, imageId:'', kind:'install', createdAt:new Date().toISOString()}); }catch(_){}
+    try{ await state.db.collection('messages').add({authorId:state.meId||'', text, imageId:'', kind:'install', dmWith:'', createdAt:new Date().toISOString()}); }catch(_){}
   }
   function dismissedAnn(){ try{ return localStorage.getItem('annDismissed')||''; }catch(_){ return ''; } }
   async function renderPinned(){
@@ -1693,7 +1749,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   let swReg=null;
   if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').then(r=>{ swReg=r; }).catch(()=>{}); 
     navigator.serviceWorker.addEventListener('message',e=>{ const h=e.data&&e.data.hash; openHash(h); }); }
-  function openHash(h){ if(!state.db) return; if(h==='#chat') showTab('chat'); else if(h==='#installs') showTab('installs'); else if(h==='#wireless') showTab('wireless'); else if(h==='#pay') openPay(state.meId); }
+  function openHash(h){ if(!state.db) return;
+    if(h&&h.indexOf('#dm-')===0){ const who=h.slice(4); if(state.profiles&&state.profiles[who]) state.dmWith=who; showTab('chat'); return; }
+    if(h==='#chat') showTab('chat'); else if(h==='#installs') showTab('installs'); else if(h==='#wireless') showTab('wireless'); else if(h==='#pay') openPay(state.meId); }
   function b64u(str){ const pad='='.repeat((4-str.length%4)%4); const raw=atob((str+pad).replace(/-/g,'+').replace(/_/g,'/')); return Uint8Array.from([...raw].map(c=>c.charCodeAt(0))); }
   async function currentSub(){ if(!pushCapable()) return null; const reg=swReg||await navigator.serviceWorker.ready; return reg.pushManager.getSubscription(); }
   async function alertsOn(){ return pushCapable()&&Notification.permission==='granted'&&!!(await currentSub().catch(()=>null)); }
@@ -2800,12 +2858,12 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   // mapping camelCase fields in the app to snake_case columns in Postgres.
   const COLS={
     installs:{agentId:'agent_id',customer:'customer',address:'address',phone:'phone',mon:'mon',saleDate:'sale_date',installDate:'install_date',window:'appt_window',vzStatus:'vz_status',status:'status',rescheduleCount:'reschedule_count',history:'history',createdBy:'created_by',createdAt:'created_at',statusAt:'status_at',statusBy:'status_by',payoutStatus:'payout_status',paidAt:'paid_at',paidBy:'paid_by',payoutAmount:'payout_amount',referralAt:'referral_at'},
-    messages:{authorId:'author_id',text:'text',imageId:'image_path',mentions:'mentions',kind:'kind',createdAt:'created_at'},
+    messages:{authorId:'author_id',text:'text',imageId:'image_path',mentions:'mentions',kind:'kind',createdAt:'created_at',dmWith:'dm_with'},
     announcements:{authorId:'author_id',text:'text',mentions:'mentions',createdAt:'created_at'},
     wireless_sales:{agentId:'agent_id',customer:'customer',saleDate:'sale_date',lineCount:'line_count',createdBy:'created_by',createdAt:'created_at',deviceFollowupAt:'device_followup_at'},
     wireless_lines:{saleId:'sale_id',phone:'phone',device:'device',sim:'sim',status:'status',statusAt:'status_at',statusBy:'status_by',payoutStatus:'payout_status',paidAt:'paid_at',paidBy:'paid_by',createdAt:'created_at'}
   };
-  const NULLABLE=new Set(['agent_id','sale_date','mon','created_by','status_by','status_at','image_path','paid_at','paid_by','payout_amount','referral_at']);
+  const NULLABLE=new Set(['agent_id','sale_date','mon','created_by','status_by','status_at','image_path','paid_at','paid_by','payout_amount','referral_at','dm_with']);
   function toRow(table,obj){ const map=COLS[table], row={}; for(const k in obj){ const c=map[k]; if(!c) continue; let v=obj[k]; if(v===''&&NULLABLE.has(c)) v=null; if(c==='kind'&&!v) v='chat'; row[c]=v; } return row; }
   function fromRow(table,row){ const map=COLS[table], o={id:row.id}; for(const k in map){ const v=row[map[k]]; o[k]=v==null?'':v; } if(o.mentions==='') o.mentions=[]; if(o.history==='') o.history=[]; return o; }
   function wrapErr(error){ return {code:error.code||'error',message:error.message}; }
@@ -2937,7 +2995,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         .on('postgres_changes',{event:'*',schema:'public',table:'agent_goals'},()=>loadSettings())
         .subscribe();
       // keep teammate names fresh as people join
-      sb.channel('rt-profiles').on('postgres_changes',{event:'*',schema:'public',table:'profiles'},async()=>{ await loadProfiles(); state.names={}; ensureNames(Object.keys(state.profiles)); if(state.tab==='chat') renderChat(); }).subscribe();
+      sb.channel('rt-profiles').on('postgres_changes',{event:'*',schema:'public',table:'profiles'},async()=>{ await loadProfiles(); state.names={}; ensureNames(Object.keys(state.profiles)); if(state.tab==='chat') renderChat(); else updateBadge(); }).subscribe();
       ensureNames(Object.keys(state.profiles));
       document.addEventListener('visibilitychange',async()=>{ if(document.visibilityState!=='visible') return; await loadProfiles(); state.names={}; ensureNames([...Object.keys(state.profiles),...state.installs.map(i=>i.agentId)]); });
       state.db.collection('installs').onSnapshot(snap=>{
@@ -2948,7 +3006,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         state.announcements=snap.docs.map(d=>({id:d.id,...d.data()})).reverse();
         renderPinned(); if(state.tab==='chat'){ renderChat(); markSeen(); } else updateBadge();
       },()=>{});
-      state.db.collection('messages').orderBy('createdAt','desc').limit(200).onSnapshot(snap=>{
+      state.db.collection('messages').orderBy('createdAt','desc').limit(600).onSnapshot(snap=>{
         state.messages=snap.docs.map(d=>({id:d.id,...d.data()})).reverse();
         if(state.tab==='chat'){ renderChat(); markSeen(); } else updateBadge();
       },()=>{});

@@ -875,7 +875,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   function referralSms(i){
     const d=(i.phone||'').replace(/\D/g,''); if(d.length<10) return '';
     const first=customerFirst(i.customer), me=myFirstName();
-    const body='Hi'+(first?' '+first:'')+'! This is '+(me||'your rep')+' with Verizon. It\'s been about two weeks since your installation \u2014 how is the service treating you? If everything\'s running well, do you know a neighbor, friend or family member who could use Verizon too? I\'d be glad to take care of them the same way. Thank you!';
+    const body='Hi'+(first?' '+first:'')+'! This is '+(me||'your rep')+' with Verizon. Just checking in to make sure everything is going great and you\u2019re enjoying your new service. If you have any neighbors, family or friends looking to get Verizon at their place, send me their name and number and I\u2019d be glad to take care of them the same way. Thank you!';
     return 'sms:+1'+d.slice(-10)+'?&body='+encodeURIComponent(body);
   }
   function textLink(i){

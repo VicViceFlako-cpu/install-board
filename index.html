@@ -2477,11 +2477,11 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     state.payFor=who;
     const wrap=$('#sheet'), sh=wrap.querySelector('.sheet'); sh.innerHTML='';
     const head=document.createElement('div'); head.className='sheet-head';
-    const h=document.createElement('h2'); h.id='sheetTitle'; h.textContent=master?'Master list':(state.canAnnounce&&who!==state.meId?agentLabel(who)+'\u2019s pay reports':'My pay reports');
+    const h=document.createElement('h2'); h.id='sheetTitle'; h.textContent=master?'Master list':(state.isOwner&&who!==state.meId?agentLabel(who)+'\u2019s pay reports':'My pay reports');
     const x=document.createElement('button'); x.className='sheet-x'; x.type='button'; x.setAttribute('aria-label','Close'); x.textContent='×'; x.onclick=closeDetail;
     head.append(h,x); sh.append(head);
     wrap.hidden=false; document.body.style.overflow='hidden'; sh.scrollTop=0;
-    if(state.canAnnounce){
+    if(state.isOwner){
       const pick=document.createElement('select'); pick.style.cssText='font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;min-height:44px;width:100%;margin-bottom:10px';
       Object.keys(state.profiles||{}).sort((a,b)=>agentLabel(a).localeCompare(agentLabel(b))).forEach(id=>{
         const o=document.createElement('option'); o.value=id; o.textContent=agentLabel(id)+(id===state.meId?' (you)':''); pick.append(o); });
@@ -2489,10 +2489,10 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       pick.value=master?'__master':who; pick.onchange=()=>openPay(pick.value); sh.append(pick);
     }
     if(master){ renderMaster(sh); return; }
-    if(state.canAnnounce) renderUnbilled(sh);
+    if(state.isOwner) renderUnbilled(sh);
     const body=document.createElement('div'); body.textContent='Loading…'; body.className='lb-sub'; sh.append(body);
     let q=sb.from('pay_report_items').select('payment_date,doc_num,customer,product,kind,outcome,risk').order('payment_date',{ascending:false}).limit(500);
-    if(state.canAnnounce) q=q.eq('agent_id',who).eq('outcome','paid');
+    if(state.isOwner) q=q.eq('agent_id',who).eq('outcome','paid');
     const {data,error}=await q;
     body.innerHTML='';
     if(error){ body.textContent='Couldn\'t load pay reports. Pull down to refresh and try again.'; return; }
@@ -2556,6 +2556,13 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       body.append(ul);
     });
   }
+  // Commission data and pay reports are the owner's alone; managers never see the import or the reports.
+  function applyOwnerUi(){
+    const imp=$('#payImport'), rn=$('#reportNames');
+    if(imp) imp.hidden=!state.isOwner;
+    if(rn) rn.hidden=!state.isOwner;
+  }
+
   // ---------- master commission list (owner only) ----------
   // Every paid item for one pay date, all agents together. No dollar figures.
   async function renderMaster(sh){
@@ -2851,7 +2858,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       $('#signOut').hidden=false;
       state.user=makeUser(); state.assets=assetsApi; state.db=makeDb();
       state.canAnnounce=(state.profiles[state.meId]||{}).role==='manager';
-      sb.rpc('is_owner').then(({data})=>{ state.isOwner=!!data; }).catch(()=>{});
+      sb.rpc('is_owner').then(({data})=>{ state.isOwner=!!data; applyOwnerUi(); }).catch(()=>{});
       $('#teamBtn').hidden=!state.canAnnounce; $('#payBtn').hidden=false; document.querySelector('.tabs').classList.add('five');
       $('#annBtn').hidden=!state.canAnnounce; $('#composerIn').classList.toggle('admin',state.canAnnounce);
       const sbtn=$('#saveBtn'); if(sbtn) sbtn.disabled=false;

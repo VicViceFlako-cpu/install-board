@@ -2838,7 +2838,18 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       state.profiles[state.meId]={...(state.profiles[state.meId]||{id:state.meId}),full_name:name};
       gateStep(null); startBoard();
     };
-    $('#signOut').onclick=async()=>{ if(!confirm('Sign out of the Install Board?')) return; try{ await disableAlerts(); }catch(_){} await sb.auth.signOut(); location.reload(); };
+    $('#signOut').onclick=async()=>{
+      if(!confirm('Sign out of the Install Board?')) return;
+      const btn=$('#signOut'); btn.disabled=true; btn.textContent='Signing out…';
+      // Never let a slow or failed network call strand someone signed in.
+      const cap=(pr,ms)=>Promise.race([pr,new Promise(r=>setTimeout(r,ms))]);
+      try{ await cap(disableAlerts(),4000); }catch(_){}
+      try{ await cap(sb.auth.signOut(),4000); }catch(_){}
+      try{ await cap(sb.auth.signOut({scope:'local'}),2000); }catch(_){}
+      try{ Object.keys(localStorage).forEach(k=>{ if(/^sb-|supabase/i.test(k)) localStorage.removeItem(k); }); }catch(_){}
+      try{ sessionStorage.clear(); }catch(_){}
+      location.replace(location.pathname);
+    };
 
     let started=false;
     async function onSession(session){

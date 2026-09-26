@@ -1291,6 +1291,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
   // ---------- tabs ----------
   // Each conversation remembers its own read mark: the team channel, then one per person.
+  const UPDATES='@updates';
   const seenKey=who=>who?'chatSeen:'+who:'chatSeen';
   function lastSeen(who){ try{ return localStorage.getItem(seenKey(who===undefined?state.dmWith:who))||''; }catch(_){ return ''; } }
   function markSeen(){
@@ -1301,34 +1302,36 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   // Messages in one conversation: the team channel, or the two sides of a direct chat.
   function inThread(m,who){
     const dm=m.dmWith||'';
-    if(!who) return !dm;
+    const sys=m.kind==='install';
+    if(who===UPDATES) return !dm&&sys;
+    if(!who) return !dm&&!sys;      // Team is for people talking, not the board reporting itself
     if(!dm) return false;
     return (m.authorId===state.meId&&dm===who)||(m.authorId===who&&dm===state.meId);
   }
   function unreadIn(who){
     const seen=lastSeen(who);
-    return (state.messages||[]).filter(m=>inThread(m,who)&&(m.createdAt||'')>seen&&m.authorId!==state.meId);
+    const anns=who? [] : (state.announcements||[]);
+    return (state.messages||[]).concat(anns)
+      .filter(m=>inThread(m,who)&&(m.createdAt||'')>seen&&m.authorId!==state.meId);
   }
   function updateBadge(){
     let n=0, hit=false;
-    const threads=[''].concat(Object.keys(state.profiles||{}).filter(id=>id!==state.meId));
-    threads.forEach(w=>{
+    convList().forEach(w=>{
       if(state.tab==='chat'&&w===state.dmWith) return;
-      const f=w? unreadIn(w) : streamItems('').filter(m=>(m.createdAt||'')>lastSeen('')&&m.authorId!==state.meId);
+      const f=unreadIn(w);
       n+=f.length;
-      if(f.some(m=>w||(Array.isArray(m.mentions)&&state.meId&&m.mentions.includes(state.meId)))) hit=true;
+      if(f.some(m=>(w&&w!==UPDATES)||(Array.isArray(m.mentions)&&state.meId&&m.mentions.includes(state.meId)))) hit=true;
     });
     const b=$('#unread'); b.hidden=!n; b.textContent=(hit?'@ ':'')+(n>99?'99+':n);
   }
   function convList(){
-    return [''].concat(Object.keys(state.profiles||{})
+    return ['',UPDATES].concat(Object.keys(state.profiles||{})
       .filter(id=>id!==state.meId)
       .sort((a,b)=>agentLabel(a).localeCompare(agentLabel(b))));
   }
-  function convLabel(who){ return who? agentLabel(who) : '# Team'; }
+  function convLabel(who){ return who===UPDATES? '📋 Board updates' : who? agentLabel(who) : '# Team'; }
   function convUnread(who){
-    return who? unreadIn(who).length
-              : streamItems('').filter(m=>(m.createdAt||'')>lastSeen('')&&m.authorId!==state.meId).length;
+    return unreadIn(who).length;
   }
   // The switcher rides in the composer, which is already pinned to the bottom — no scrolling up to change chats.
   function renderConvBar(){
@@ -1347,7 +1350,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const x=document.createElement('button'); x.className='sheet-x'; x.type='button'; x.setAttribute('aria-label','Close'); x.textContent='×'; x.onclick=closeDetail;
     head.append(h,x); sh.append(head);
     const note=document.createElement('p'); note.className='lb-sub';
-    note.textContent='Direct messages are private to the two of you.'; sh.append(note);
+    note.textContent='Board updates are automatic. Direct messages are private to the two of you.'; sh.append(note);
     convList().forEach(who=>{
       const r=document.createElement('button'); r.type='button'; r.className='conv-row';
       r.setAttribute('aria-selected', String(state.dmWith===who));
@@ -1447,11 +1450,12 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   async function renderChat(){
     if(state.tab!=='chat') return;
     renderConvBar();
-    const dm=state.dmWith;
-    // A direct chat has no announcements and no team-wide audience.
+    const dm=state.dmWith, isUpd=dm===UPDATES;
+    // Board updates are a feed, not a conversation: nothing to type into it.
+    $('#composerIn').hidden=isUpd;
     $('#annBtn').hidden=!state.canAnnounce||!!dm;
     if(dm&&state.announceMode){ state.announceMode=false; $('#annBtn').setAttribute('aria-pressed','false'); $('#photoBtn').disabled=false; }
-    $('#msgInput').placeholder=dm? ('Message '+agentLabel(dm)) : 'Message the team';
+    $('#msgInput').placeholder=dm&&!isUpd? ('Message '+agentLabel(dm)) : 'Message the team';
     const token=++chatRenderToken;
     const all=streamItems();
     const ids=[...new Set(all.flatMap(m=>[m.authorId,...(m.mentions||[])]).filter(Boolean))];
@@ -1461,7 +1465,10 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const box=$('#chat'); box.innerHTML='';
     if(!all.length){
       const e=document.createElement('div'); e.className='empty';
-      e.textContent=!state.db?'Chat isn\'t connected in this view.':(dm?('No messages with '+agentLabel(dm)+' yet. Only the two of you can see this conversation.'):'No messages yet. Say hi to the team, or paste a sale to share it.');
+      e.textContent=!state.db?'Chat isn\'t connected in this view.'
+        :isUpd?'No board updates yet. New sales, status changes and reschedules will appear here.'
+        :dm?('No messages with '+agentLabel(dm)+' yet. Only the two of you can see this conversation.')
+        :'No messages yet. Say hi to the team, or paste a sale to share it.';
       box.append(e); return;
     }
     let prevDay='', prev=null;
@@ -1531,6 +1538,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   });
   $('#sendBtn').onclick=sendMsg;
   async function sendMsg(){
+    if(state.dmWith===UPDATES) return;
     const raw=msgInput.value.trim(); if(!raw&&!state.attach) return;
     const {text,mentions}=encodeMentions(raw);
     if(!state.db){ toast('Chat isn\'t connected in this view.'); return; }

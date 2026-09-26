@@ -265,13 +265,14 @@ button{cursor:pointer}
 .badge{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--today);color:#1B1400;font-size:.75rem;margin-left:6px;vertical-align:1px}
 
 /* chat */
-.conv-bar{position:sticky;top:0;z-index:5;display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;
-  padding:10px 16px;margin:0 -16px 10px;background:var(--bg);border-bottom:1px solid var(--line);scrollbar-width:none}
-.conv-bar::-webkit-scrollbar{display:none}
-.conv{flex:0 0 auto;display:flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:8px 14px;font:inherit;font-size:.9rem;font-weight:600;min-height:40px;white-space:nowrap}
-.conv[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#07222b}
-.conv .dot{width:8px;height:8px;border-radius:50%;background:var(--signal);flex:0 0 auto}
-.conv[aria-selected="true"] .dot{background:#07222b}
+.conv-pick{max-width:720px;margin:0 auto 8px;display:flex;align-items:center;gap:8px;background:none;border:0;
+  padding:4px 2px;font:inherit;font-size:.9rem;font-weight:600;color:var(--muted);width:100%;min-height:32px}
+.conv-pick .dot{width:8px;height:8px;border-radius:50%;background:var(--signal);flex:0 0 auto}
+.conv-row{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;background:none;border:0;
+  border-bottom:1px solid var(--line);padding:14px 2px;font:inherit;font-size:1rem;color:var(--ink);min-height:52px;text-align:left}
+.conv-row[aria-selected="true"]{font-weight:700;color:var(--signal)}
+.conv-row .n{background:var(--signal);color:var(--signal-ink);border-radius:10px;min-width:20px;height:20px;padding:0 6px;
+  display:grid;place-items:center;font-size:.75rem;font-weight:700}
 .chat{display:flex;flex-direction:column;gap:2px;padding-bottom:12px}
 .day-sep{align-self:center;color:var(--muted);font-size:.82rem;margin:14px 0 6px}
 .msg{display:grid;grid-template-columns:34px 1fr;gap:10px;padding:6px 0;max-width:100%}
@@ -609,13 +610,13 @@ body.on-chat .wrap{padding-bottom:140px}
   </div>
 
   <div id="viewChat" hidden>
-    <div id="convBar" class="conv-bar" role="tablist" aria-label="Conversations"></div>
     <div id="chat" class="chat" aria-live="polite"></div>
   </div>
 </div>
 <div id="composer" class="composer" hidden>
   <div id="suggest" class="suggest" hidden role="listbox" aria-label="Mention a teammate"></div>
   <div id="attachPreview" class="attach-preview" hidden></div>
+  <button id="convPick" class="conv-pick" type="button" aria-haspopup="dialog"></button>
   <div class="composer-in" id="composerIn">
     <button id="annBtn" class="ann-toggle" aria-pressed="false" hidden>Announce</button>
     <button id="photoBtn" class="icon" aria-label="Attach a photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="15" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M21 17l-5-5-9 8"/></svg></button>
@@ -1319,25 +1320,48 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     });
     const b=$('#unread'); b.hidden=!n; b.textContent=(hit?'@ ':'')+(n>99?'99+':n);
   }
-  function renderConvBar(){
-    const bar=$('#convBar'); if(!bar) return; bar.innerHTML='';
-    const mk=(who,label)=>{
-      const b=document.createElement('button'); b.type='button'; b.className='conv'; b.setAttribute('role','tab');
-      b.setAttribute('aria-selected', String(state.dmWith===who));
-      b.textContent=label;
-      const u=who? unreadIn(who).length : streamItems('').filter(m=>(m.createdAt||'')>lastSeen('')&&m.authorId!==state.meId).length;
-      if(u&&state.dmWith!==who){ const d=document.createElement('span'); d.className='dot'; b.append(d); }
-      b.onclick=()=>{ if(state.dmWith===who) return; state.dmWith=who; renderChat(); markSeen(); requestAnimationFrame(()=>window.scrollTo(0,document.body.scrollHeight)); };
-      bar.append(b);
-    };
-    mk('','# Team');
-    Object.keys(state.profiles||{})
+  function convList(){
+    return [''].concat(Object.keys(state.profiles||{})
       .filter(id=>id!==state.meId)
-      .sort((a,b)=>agentLabel(a).localeCompare(agentLabel(b)))
-      .forEach(id=>mk(id,agentLabel(id)));
-    // Keep the open conversation in view, however far down the list it sits.
-    const sel=bar.querySelector('.conv[aria-selected="true"]');
-    if(sel) sel.scrollIntoView({block:'nearest',inline:'center'});
+      .sort((a,b)=>agentLabel(a).localeCompare(agentLabel(b))));
+  }
+  function convLabel(who){ return who? agentLabel(who) : '# Team'; }
+  function convUnread(who){
+    return who? unreadIn(who).length
+              : streamItems('').filter(m=>(m.createdAt||'')>lastSeen('')&&m.authorId!==state.meId).length;
+  }
+  // The switcher rides in the composer, which is already pinned to the bottom — no scrolling up to change chats.
+  function renderConvBar(){
+    const b=$('#convPick'); if(!b) return; b.innerHTML='';
+    const t=document.createElement('span'); t.textContent=convLabel(state.dmWith)+'  ⌄'; b.append(t);
+    const elsewhere=convList().filter(w=>w!==state.dmWith).reduce((n,w)=>n+convUnread(w),0);
+    if(elsewhere){ const d=document.createElement('span'); d.className='dot'; b.append(d);
+      const c=document.createElement('span'); c.textContent=elsewhere+' unread elsewhere'; b.append(c); }
+    b.onclick=openConvPicker;
+  }
+  function openConvPicker(){
+    state.detailId=null;
+    const wrap=$('#sheet'), sh=wrap.querySelector('.sheet'); sh.innerHTML='';
+    const head=document.createElement('div'); head.className='sheet-head';
+    const h=document.createElement('h2'); h.id='sheetTitle'; h.textContent='Conversations';
+    const x=document.createElement('button'); x.className='sheet-x'; x.type='button'; x.setAttribute('aria-label','Close'); x.textContent='×'; x.onclick=closeDetail;
+    head.append(h,x); sh.append(head);
+    const note=document.createElement('p'); note.className='lb-sub';
+    note.textContent='Direct messages are private to the two of you.'; sh.append(note);
+    convList().forEach(who=>{
+      const r=document.createElement('button'); r.type='button'; r.className='conv-row';
+      r.setAttribute('aria-selected', String(state.dmWith===who));
+      const l=document.createElement('span'); l.textContent=convLabel(who)+(state.dmWith===who?'  ✓':''); r.append(l);
+      const u=convUnread(who);
+      if(u&&state.dmWith!==who){ const n=document.createElement('span'); n.className='n'; n.textContent=u>99?'99+':u; r.append(n); }
+      r.onclick=()=>{
+        closeDetail();
+        if(state.dmWith!==who){ state.dmWith=who; renderChat(); markSeen(); }
+        requestAnimationFrame(()=>window.scrollTo(0,document.body.scrollHeight));
+      };
+      sh.append(r);
+    });
+    wrap.hidden=false; document.body.style.overflow='hidden'; sh.scrollTop=0; x.focus({preventScroll:true});
   }
   function showTab(t){
     state.tab=t;

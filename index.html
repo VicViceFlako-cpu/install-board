@@ -2557,9 +2557,15 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   state.unbilledDays = 14;
   async function renderUnbilled(sh){
     if(!state.canAnnounce) return;
-    const box=document.createElement('div'); box.className='unbilled'; sh.append(box);
+    const box=document.createElement('div'); box.className='unbilled'; box.hidden=true; sh.append(box);
     const draw=async()=>{
+      const {data,error}=await sb.rpc('unbilled',{p_days:state.unbilledDays});
       box.innerHTML='';
+      if(error){ box.hidden=true; return; }
+      const ins=(data&&data.installs)||[], wls=(data&&data.lines)||[];
+      // nothing outstanding: the panel stays out of the way entirely
+      if(!ins.length&&!wls.length){ box.hidden=true; return; }
+      box.hidden=false;
       const head=document.createElement('div'); head.className='ub-head';
       const t=document.createElement('b'); t.textContent='⚠️ Never billed';
       const sel=document.createElement('select'); sel.className='ub-days';
@@ -2568,12 +2574,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       sel.value=String(state.unbilledDays);
       sel.onchange=()=>{ state.unbilledDays=+sel.value; draw(); };
       head.append(t,sel); box.append(head);
-      const note=document.createElement('p'); note.className='lb-sub'; note.textContent='Checking…'; box.append(note);
-      const {data,error}=await sb.rpc('unbilled',{p_days:state.unbilledDays});
-      if(error){ note.textContent='Couldn\'t run the check. Pull down to refresh and try again.'; return; }
-      const ins=(data&&data.installs)||[], wls=(data&&data.lines)||[];
-      if(!ins.length&&!wls.length){ note.textContent='Nothing outstanding — every installed order and active line has been paid.'; return; }
+      const note=document.createElement('p'); note.className='lb-sub';
       note.textContent=(ins.length+wls.length)+' item'+(ins.length+wls.length===1?'':'s')+' finished but never paid on any report. Only managers see this.';
+      box.append(note);
       const ul=document.createElement('ul'); ul.className='hist';
       ins.forEach(r=>{
         const li=document.createElement('li'); li.className='tappable';

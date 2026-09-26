@@ -685,7 +685,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     groups.past.sort((a,b)=>(b.installDate||'').localeCompare(a.installDate||''));
 
     const list=$('#list'); list.innerHTML='';
-    const defs=[['late','Overdue, needs a status'],['today','Today'],['week','Next 7 days'],['later','Later'],['referral','Two weeks in — ask for referrals']];
+    const defs=[['late','Overdue, needs a status'],['referral','Two weeks in — ask for referrals'],['today','Today'],['week','Next 7 days'],['later','Later']];
     let shown=0;
     defs.forEach(([k,label])=>{ if(!groups[k].length) return; shown+=groups[k].length; list.append(groupEl(label,groups[k])); });
     if(!shown){

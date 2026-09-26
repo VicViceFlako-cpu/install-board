@@ -554,7 +554,7 @@ body.on-chat .wrap{padding-bottom:140px}
       <div id="poSum" class="po-sum"></div>
       <div id="poList"></div>
     </section>
-    <section class="team-sec">
+    <section class="team-sec" id="secGoals">
       <h2>Weekly goals</h2>
       <p class="note">Weekly targets, Monday to Sunday. Progress shows on the Leaders tab, and everyone gets an alert when an agent hits their goal. Set a team default, then override it for anyone who needs a different number.</p>
       <div class="po-top">
@@ -566,13 +566,13 @@ body.on-chat .wrap{padding-bottom:140px}
       <h3 style="font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:18px 0 6px">Per agent</h3>
       <div id="goalList"></div>
     </section>
-    <section class="team-sec">
+    <section class="team-sec" id="secExport">
       <h2>Export orders</h2>
       <p class="note">Download the board as a spreadsheet (opens in Excel, Numbers or Google Sheets). Good for payouts and keeping a backup.</p>
       <div class="row-btns" style="margin-top:0"><button id="expBtn" class="btn btn-primary btn-small">Internet orders</button><button id="expWl" class="btn btn-primary btn-small">Wireless lines</button><button id="expSave" class="btn btn-ghost btn-small" hidden>Save / share file</button></div>
       <div id="expMsg" class="team-msg" role="status"></div>
     </section>
-    <section class="team-sec">
+    <section class="team-sec" id="secAddMate">
       <h2>Add a teammate</h2>
       <p class="note">They sign in with this email and password. Nothing gets sent automatically; you'll get a message to text them.</p>
       <div class="team-form">
@@ -584,7 +584,7 @@ body.on-chat .wrap{padding-bottom:140px}
       </div>
       <div id="tmMsg" class="team-msg" role="status"></div>
     </section>
-    <section class="team-sec">
+    <section class="team-sec" id="secTeam">
       <h2>Team</h2>
       <p class="note">Deactivating someone blocks sign-in but keeps all their orders credited to them.</p>
       <div id="teamList"></div>

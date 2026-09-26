@@ -287,6 +287,9 @@ button{cursor:pointer}
 .composer .icon{width:46px;height:46px}
 .send{background:var(--signal);color:var(--signal-ink);border:0;border-radius:12px;min-height:46px;padding:0 16px;font-weight:600}
 .attach-preview{max-width:720px;margin:0 auto 8px;display:flex;gap:10px;align-items:center;font-size:.9rem;color:var(--muted)}
+.unbilled{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:14px;background:var(--bg)}
+.ub-head{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:4px}
+.ub-days{font:inherit;font-size:.85rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 8px;min-height:36px}
 .attach-preview img{height:52px;border-radius:8px;border:1px solid var(--line)}
 .attach-preview button{background:none;border:0;color:var(--danger);font-weight:600}
 body.on-chat .wrap{padding-bottom:140px}
@@ -656,10 +659,12 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const rows=state.installs.filter(i=>(!agentSel.value||agentKey(i)===agentSel.value)&&(!q||[agentName(i),i.customer,i.address,i.mon,i.phone].join(' ').toLowerCase().includes(q)))
       .sort((a,b)=>(a.installDate||'9999').localeCompare(b.installDate||'9999'));
 
-    const groups={late:[],today:[],week:[],later:[],past:[]};
+    const groups={late:[],today:[],week:[],later:[],referral:[],past:[]};
     rows.forEach(r=>{
       const n=daysFromToday(r.installDate);
-      if(r.status==='installed'||r.status==='cancelled') groups.past.push(r);
+      // two weeks on, an installed order comes back up so the referral ask actually happens
+      if(r.status==='installed'&&r.payoutStatus==='paid'&&textPhase(r)==='referral') groups.referral.push(r);
+      else if(r.status==='installed'||r.status==='cancelled') groups.past.push(r);
       else if(n===null) groups.later.push(r);
       else if(n<0) groups.late.push(r);
       else if(n===0) groups.today.push(r);
@@ -669,7 +674,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     groups.past.sort((a,b)=>(b.installDate||'').localeCompare(a.installDate||''));
 
     const list=$('#list'); list.innerHTML='';
-    const defs=[['late','Overdue, needs a status'],['today','Today'],['week','Next 7 days'],['later','Later']];
+    const defs=[['late','Overdue, needs a status'],['today','Today'],['week','Next 7 days'],['later','Later'],['referral','Two weeks in — ask for referrals']];
     let shown=0;
     defs.forEach(([k,label])=>{ if(!groups[k].length) return; shown+=groups[k].length; list.append(groupEl(label,groups[k])); });
     if(!shown){
@@ -856,6 +861,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     if(n===null||st==='cancelled') return null;
     if(n===0){ const end=windowEnd(i); return (end&&Date.now()>=end.getTime())?'confirm':(st==='scheduled'?'remind':'confirm'); }
     if(n<0&&n>=-3&&st!=='cancelled') return 'confirm';
+    // two weeks on and paid: the service stuck, so it's safe to ask who else needs it
+    if(st==='installed'&&i.payoutStatus==='paid'&&n<=-14&&n>=-60) return 'referral';
     return null;
   }
   function confirmSms(i){
@@ -865,12 +872,18 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const body='Hi'+(first?' '+first:'')+'! This is '+(me||'your rep')+' with Verizon. Just checking in: was your Verizon internet installation completed '+when+'? If the technician didn\'t make it or anything isn\'t working right, reply here and I\'ll help get it sorted out. Thank you!';
     return 'sms:+1'+d.slice(-10)+'?&body='+encodeURIComponent(body);
   }
+  function referralSms(i){
+    const d=(i.phone||'').replace(/\D/g,''); if(d.length<10) return '';
+    const first=customerFirst(i.customer), me=myFirstName();
+    const body='Hi'+(first?' '+first:'')+'! This is '+(me||'your rep')+' with Verizon. It\'s been about two weeks since your installation \u2014 how is the service treating you? If everything\'s running well, do you know a neighbor, friend or family member who could use Verizon too? I\'d be glad to take care of them the same way. Thank you!';
+    return 'sms:+1'+d.slice(-10)+'?&body='+encodeURIComponent(body);
+  }
   function textLink(i){
     const ph=textPhase(i); if(!ph) return null;
-    const a=document.createElement('a'); a.className='text-btn'+(ph==='confirm'?' confirm':'');
-    a.href=ph==='remind'?reminderSms(i):confirmSms(i);
-    a.textContent=ph==='remind'?'💬 Text install reminder':'✅ Text install check-in';
-    a.setAttribute('aria-label',(ph==='remind'?'Text install reminder to ':'Text install check-in to ')+(i.customer||'the customer'));
+    const a=document.createElement('a'); a.className='text-btn'+(ph==='remind'?'':' confirm');
+    a.href=ph==='remind'?reminderSms(i):ph==='referral'?referralSms(i):confirmSms(i);
+    a.textContent=ph==='remind'?'💬 Text install reminder':ph==='referral'?'⭐ Text 2-week check-in & referral ask':'✅ Text install check-in';
+    a.setAttribute('aria-label',(ph==='remind'?'Text install reminder to ':ph==='referral'?'Text two week check in and referral request to ':'Text install check-in to ')+(i.customer||'the customer'));
     return a;
   }
   // flip buttons from reminder to check-in when a window ends, without disturbing the screen otherwise
@@ -1006,9 +1019,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const who=useIds
       ? '<div class="credit"><span class="credit-lab">Credited to</span><div class="credit-line"><b class="credit-name"></b><button type="button" class="linkish credit-change">Change</button></div><div class="credit-pick" hidden><input type="search" placeholder="Search teammates" aria-label="Search teammates"><div class="credit-list"></div></div></div>'
       : '<label>Sales agent<input data-f="agent" autocomplete="off"></label>';
-    r.innerHTML=who+'<label>Customer<input data-f="customer" autocomplete="off"></label><div class="dates"><label>Sale date<input type="date" data-f="saleDate"></label><label>Install date<input type="date" data-f="installDate"></label></div>'
-      +'<div class="dates"><label>Appointment window<input data-f="window" placeholder="8:00 AM to 12:00 PM"></label><label>Order # (MON)<input data-f="mon" autocomplete="off"></label></div>'
-      +'<label>Service address<input data-f="address" autocomplete="off"></label><label>Customer phone<input data-f="phone" inputmode="tel"></label>'
+    r.innerHTML=who+'<label>Customer *<input data-f="customer" autocomplete="off"></label><div class="dates"><label>Sale date *<input type="date" data-f="saleDate"></label><label>Install date *<input type="date" data-f="installDate"></label></div>'
+      +'<div class="dates"><label>Appointment window<input data-f="window" placeholder="Leave blank for self-install"></label><label>Order # (MON) *<input data-f="mon" autocomplete="off" inputmode="numeric"></label></div>'
+      +'<label>Service address *<input data-f="address" autocomplete="off"></label><label>Customer phone *<input data-f="phone" inputmode="tel"></label>'
       +'<div class="row-tools"><span class="dup-note" hidden></span><button class="linkish rm" type="button">Remove</button></div>';
     ['customer','window','mon','address'].forEach(f=>{ r.querySelector('[data-f='+f+']').value=d[f]||''; });
     r.querySelector('[data-f=phone]').value=fmtPhone(d.phone);
@@ -1051,10 +1064,25 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   const photoCache={};
   function photoUrl(path){ if(!photoCache[path]) photoCache[path]=sb.storage.from('chat-photos').createSignedUrl(path,60*60*12).then(r=>r.data?r.data.signedUrl:'').catch(()=>''); return photoCache[path]; }
   function setPhoto(im,path){ photoUrl(path).then(u=>{ if(u) im.src=u; }); }
+  // Everything but the appointment window is required — self-installs have no window.
+  function draftProblem(d){
+    if(!d.agentId&&!d.agent) return 'an agent';
+    if(!(d.customer||'').trim()) return 'a customer name';
+    if(!parseISO(d.saleDate)) return 'a sale date';
+    if(!parseISO(d.installDate)) return 'an install date';
+    const md=(d.mon||'').replace(/\D/g,'');
+    if(!md) return 'an order number (MON)';
+    if(md.length!==11) return 'an 11-digit MON — that one has '+md.length+(md.length===1?' digit':' digits');
+    if(!(d.address||'').trim()) return 'a service address';
+    if((d.phone||'').replace(/\D/g,'').length!==10) return 'a 10-digit customer phone';
+    return '';
+  }
   async function saveDrafts(){
     syncDrafts();
-    const bad=state.drafts.find(d=>(!d.agentId&&!d.agent)||!parseISO(d.installDate));
-    if(bad){ toast('Each row needs an agent and an install date.'); return; }
+    for(let n=0;n<state.drafts.length;n++){
+      const why=draftProblem(state.drafts[n]);
+      if(why){ toast((state.drafts.length>1?'Row '+(n+1)+' needs ':'Needs ')+why+'.'); return; }
+    }
     const btn=$('#saveBtn'); btn.disabled=true; btn.textContent='Saving…';
     try{
       const added=[], updated=[]; let skipped=0;
@@ -2457,6 +2485,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         const o=document.createElement('option'); o.value=id; o.textContent=agentLabel(id)+(id===state.meId?' (you)':''); pick.append(o); });
       pick.value=who; pick.onchange=()=>openPay(pick.value); sh.append(pick);
     }
+    if(state.canAnnounce) renderUnbilled(sh);
     const body=document.createElement('div'); body.textContent='Loading…'; body.className='lb-sub'; sh.append(body);
     let q=sb.from('pay_report_items').select('payment_date,doc_num,customer,product,kind,outcome,risk').order('payment_date',{ascending:false}).limit(500);
     if(state.canAnnounce) q=q.eq('agent_id',who).eq('outcome','paid');
@@ -2523,6 +2552,55 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       body.append(ul);
     });
   }
+  // ---------- never billed (managers only) ----------
+  // Installed orders and active lines that no pay report has ever paid for.
+  state.unbilledDays = 14;
+  async function renderUnbilled(sh){
+    if(!state.canAnnounce) return;
+    const box=document.createElement('div'); box.className='unbilled'; sh.append(box);
+    const draw=async()=>{
+      box.innerHTML='';
+      const head=document.createElement('div'); head.className='ub-head';
+      const t=document.createElement('b'); t.textContent='⚠️ Never billed';
+      const sel=document.createElement('select'); sel.className='ub-days';
+      [[14,'over 2 weeks'],[21,'over 3 weeks'],[30,'over 30 days'],[0,'all unpaid']].forEach(([v,l])=>{
+        const o=document.createElement('option'); o.value=v; o.textContent=l; sel.append(o); });
+      sel.value=String(state.unbilledDays);
+      sel.onchange=()=>{ state.unbilledDays=+sel.value; draw(); };
+      head.append(t,sel); box.append(head);
+      const note=document.createElement('p'); note.className='lb-sub'; note.textContent='Checking…'; box.append(note);
+      const {data,error}=await sb.rpc('unbilled',{p_days:state.unbilledDays});
+      if(error){ note.textContent='Couldn\'t run the check. Pull down to refresh and try again.'; return; }
+      const ins=(data&&data.installs)||[], wls=(data&&data.lines)||[];
+      if(!ins.length&&!wls.length){ note.textContent='Nothing outstanding — every installed order and active line has been paid.'; return; }
+      note.textContent=(ins.length+wls.length)+' item'+(ins.length+wls.length===1?'':'s')+' finished but never paid on any report. Only managers see this.';
+      const ul=document.createElement('ul'); ul.className='hist';
+      ins.forEach(r=>{
+        const li=document.createElement('li'); li.className='tappable';
+        const b=document.createElement('b'); b.textContent=r.customer||r.mon||'Order';
+        if(r.no_mon){ const w=document.createElement('span'); w.className='risk-tag medium'; w.textContent='no MON'; b.append(' ',w); }
+        const sm=document.createElement('small');
+        sm.textContent=[agentLabel(r.agent_id), r.mon||'', 'installed '+fmtLong(r.install_date), r.days+' day'+(r.days===1?'':'s')+' ago',
+                        r.no_mon?'can never match a report':(r.seen_on_report?'on a report but not marked paid':'')].filter(Boolean).join(' · ');
+        li.append(b,sm);
+        li.onclick=()=>{ closeDetail(); openDetail(r.id); };
+        ul.append(li);
+      });
+      wls.forEach(r=>{
+        const li=document.createElement('li'); li.className='tappable';
+        const b=document.createElement('b'); b.textContent=(r.customer||'Wireless line')+' · '+fmtPhone(r.phone);
+        const sm=document.createElement('small');
+        sm.textContent=[agentLabel(r.agent_id),'sold '+fmtLong(r.sale_date), r.days+' day'+(r.days===1?'':'s')+' ago',
+                        r.seen_on_report?'on a report but not marked paid':''].filter(Boolean).join(' · ');
+        li.append(b,sm);
+        li.onclick=()=>{ closeDetail(); openWireless(r.sale_id); };
+        ul.append(li);
+      });
+      box.append(ul);
+    };
+    draw();
+  }
+
   $('#payBtn').onclick=()=>openPay(state.meId);
 
   // ---------- report name mapping ----------

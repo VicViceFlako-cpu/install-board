@@ -289,6 +289,7 @@ button{cursor:pointer}
 .attach-preview{max-width:720px;margin:0 auto 8px;display:flex;gap:10px;align-items:center;font-size:.9rem;color:var(--muted)}
 .unbilled{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:14px;background:var(--bg)}
 .ub-head{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:4px}
+.ml-agent{border-top:1px solid var(--line);padding-top:8px;margin-top:6px}
 .ub-days{font:inherit;font-size:.85rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 8px;min-height:36px}
 .attach-preview img{height:52px;border-radius:8px;border:1px solid var(--line)}
 .attach-preview button{background:none;border:0;color:var(--danger);font-weight:600}
@@ -2486,6 +2487,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       pick.value=who; pick.onchange=()=>openPay(pick.value); sh.append(pick);
     }
     if(state.canAnnounce) renderUnbilled(sh);
+    if(state.isOwner) renderMaster(sh);
     const body=document.createElement('div'); body.textContent='Loading…'; body.className='lb-sub'; sh.append(body);
     let q=sb.from('pay_report_items').select('payment_date,doc_num,customer,product,kind,outcome,risk').order('payment_date',{ascending:false}).limit(500);
     if(state.canAnnounce) q=q.eq('agent_id',who).eq('outcome','paid');
@@ -2552,9 +2554,72 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       body.append(ul);
     });
   }
+  // ---------- master commission list (owner only) ----------
+  // Every paid item for one pay date, all agents together, with amounts.
+  async function renderMaster(sh){
+    const box=document.createElement('div'); box.className='unbilled'; box.hidden=true; sh.append(box);
+    const draw=async()=>{
+      const args={}; if(state.masterDate) args.p_date=state.masterDate;
+      const {data,error}=await sb.rpc('pay_master',args);
+      box.innerHTML='';
+      if(error||!data){ box.hidden=true; return; }
+      const rows=data.rows||[], dates=data.dates||[];
+      box.hidden=false;
+      const head=document.createElement('div'); head.className='ub-head';
+      const t=document.createElement('b'); t.textContent='📋 Master list';
+      head.append(t);
+      if(dates.length>1){
+        const sel=document.createElement('select'); sel.className='ub-days';
+        dates.forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent=fmtShort(d); sel.append(o); });
+        sel.value=data.date||dates[0];
+        sel.onchange=()=>{ state.masterDate=sel.value; draw(); };
+        head.append(sel);
+      }
+      box.append(head);
+      const note=document.createElement('p'); note.className='lb-sub';
+      note.textContent=rows.length? ('Paid '+fmtLong(data.date)+' · '+data.count+' item'+(data.count===1?'':'s')+' · $'+Number(data.total||0).toFixed(2)+' total')
+                                  : ('Nothing paid on '+fmtLong(data.date)+'.');
+      box.append(note);
+      if(!rows.length) return;
+      const ul=document.createElement('ul'); ul.className='hist';
+      let last='';
+      rows.forEach(r=>{
+        if(r.agent!==last){
+          last=r.agent;
+          const sub=rows.filter(x=>x.agent===r.agent);
+          const h=document.createElement('li'); h.className='ml-agent';
+          const hb=document.createElement('b'); hb.textContent=r.agent;
+          const hs=document.createElement('small');
+          hs.textContent=sub.length+' item'+(sub.length===1?'':'s')+' · $'+sub.reduce((n,x)=>n+Number(x.amount||0),0).toFixed(2);
+          h.append(hb,hs); ul.append(h);
+        }
+        const li=document.createElement('li');
+        const b=document.createElement('b');
+        b.textContent=(r.customer||'—')+'  $'+Number(r.amount||0).toFixed(2);
+        if(r.risk){ b.append(' ',riskTag(r.risk)); }
+        const sm=document.createElement('small');
+        sm.textContent=[r.kind==='wireless'?fmtPhone(r.doc_num):r.doc_num, r.product||''].filter(Boolean).join(' · ');
+        li.append(b,sm); ul.append(li);
+      });
+      box.append(ul);
+      const csv=document.createElement('button'); csv.className='btn btn-ghost btn-small'; csv.textContent='⬇︎ Save / share CSV';
+      csv.onclick=()=>{
+        const cols=['Agent','Customer','Number','Product','Type','Risk','Amount'];
+        const lines=[cols.map(csvCell).join(',')];
+        rows.forEach(r=>lines.push([r.agent,r.customer||'',r.doc_num||'',r.product||'',r.kind||'',r.risk||'',Number(r.amount||0).toFixed(2)].map(csvCell).join(',')));
+        lines.push(['TOTAL','','','','','',Number(data.total||0).toFixed(2)].map(csvCell).join(','));
+        const f=new File(['\uFEFF'+lines.join('\r\n')],'commissions-'+data.date+'.csv',{type:'text/csv'});
+        if(navigator.canShare&&navigator.canShare({files:[f]})){ navigator.share({files:[f],title:f.name}).catch(()=>{}); return; }
+        const url=URL.createObjectURL(f); const a=document.createElement('a'); a.href=url; a.download=f.name; document.body.append(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),30000);
+      };
+      box.append(csv);
+    };
+    draw();
+  }
+
   // ---------- never billed (managers only) ----------
   // Installed orders and active lines that no pay report has ever paid for.
-  state.unbilledDays = 14;
+  state.unbilledDays = 14; state.isOwner = false; state.masterDate = '';
   async function renderUnbilled(sh){
     if(!state.canAnnounce) return;
     const box=document.createElement('div'); box.className='unbilled'; box.hidden=true; sh.append(box);
@@ -2785,6 +2850,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       $('#signOut').hidden=false;
       state.user=makeUser(); state.assets=assetsApi; state.db=makeDb();
       state.canAnnounce=(state.profiles[state.meId]||{}).role==='manager';
+      sb.rpc('is_owner').then(({data})=>{ state.isOwner=!!data; }).catch(()=>{});
       $('#teamBtn').hidden=!state.canAnnounce; $('#payBtn').hidden=false; document.querySelector('.tabs').classList.add('five');
       $('#annBtn').hidden=!state.canAnnounce; $('#composerIn').classList.toggle('admin',state.canAnnounce);
       const sbtn=$('#saveBtn'); if(sbtn) sbtn.disabled=false;

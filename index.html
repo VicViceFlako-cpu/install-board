@@ -289,6 +289,16 @@ button{cursor:pointer}
 .attach-preview{max-width:720px;margin:0 auto 8px;display:flex;gap:10px;align-items:center;font-size:.9rem;color:var(--muted)}
 .unbilled{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:14px;background:var(--bg)}
 .ub-head{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:4px}
+.acc-group{margin:0 0 20px}
+.acc-group>h3{font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px;padding:0 2px}
+details.acc{border:1px solid var(--line);border-radius:12px;background:var(--bg);margin-bottom:8px;overflow:hidden}
+details.acc>summary{list-style:none;cursor:pointer;padding:14px 14px;font-weight:700;font-size:1rem;display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:48px}
+details.acc>summary::-webkit-details-marker{display:none}
+details.acc>summary::after{content:'⌄';color:var(--muted);font-size:1.1rem;line-height:1;transition:transform .15s}
+details.acc[open]>summary::after{transform:rotate(180deg)}
+details.acc[open]>summary{border-bottom:1px solid var(--line)}
+details.acc .team-sec{margin:0;border:0;padding:14px}
+details.acc .team-sec>h2{display:none}
 .ml-agent{border-top:1px solid var(--line);padding-top:8px;margin-top:6px}
 .ub-days{font:inherit;font-size:.85rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 8px;min-height:36px}
 .attach-preview img{height:52px;border-radius:8px;border:1px solid var(--line)}
@@ -2556,11 +2566,40 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       body.append(ul);
     });
   }
+  // ---------- Team screen: grouped accordion ----------
+  // Native <details> keeps the content in the DOM, so anything half-typed survives a collapse.
+  const TEAM_GROUPS=[
+    ['People', [['secTeam','Team'],['secAddMate','Add a teammate'],['devices','Device management']]],
+    ['Money',  [['payImport','Import pay report'],['payouts','Payouts'],['reportNames','Pay report names']]],
+    ['Setup',  [['secGoals','Weekly goals'],['secExport','Export orders']]]
+  ];
+  function buildTeamAccordion(){
+    const host=$('#viewTeam'); if(!host||host.dataset.acc) return; host.dataset.acc='1';
+    let open=''; try{ open=localStorage.getItem('teamOpen')||''; }catch(_){}
+    TEAM_GROUPS.forEach(([label,items])=>{
+      const g=document.createElement('div'); g.className='acc-group';
+      const h=document.createElement('h3'); h.textContent=label; g.append(h);
+      items.forEach(([id,title])=>{
+        const sec=document.getElementById(id); if(!sec) return;
+        const d=document.createElement('details'); d.className='acc'; d.dataset.sec=id;
+        const sum=document.createElement('summary'); sum.textContent=title;
+        d.append(sum); d.append(sec);
+        if(id===open) d.open=true;
+        d.addEventListener('toggle',()=>{ if(!d.open) return;
+          try{ localStorage.setItem('teamOpen',id); }catch(_){}
+        });
+        g.append(d);
+      });
+      if(g.querySelector('details')) host.append(g);
+    });
+  }
+
   // Commission data and pay reports are the owner's alone; managers never see the import or the reports.
   function applyOwnerUi(){
-    const imp=$('#payImport'), rn=$('#reportNames');
-    if(imp) imp.hidden=!state.isOwner;
-    if(rn) rn.hidden=!state.isOwner;
+    ['payImport','reportNames'].forEach(id=>{
+      const el=document.getElementById(id); if(!el) return;
+      const box=el.closest('details')||el; box.hidden=!state.isOwner;
+    });
   }
 
   // ---------- master commission list (owner only) ----------
@@ -2869,6 +2908,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       $('#signOut').hidden=false;
       state.user=makeUser(); state.assets=assetsApi; state.db=makeDb();
       state.canAnnounce=(state.profiles[state.meId]||{}).role==='manager';
+      buildTeamAccordion();
       sb.rpc('is_owner').then(({data})=>{ state.isOwner=!!data; applyOwnerUi(); }).catch(()=>{});
       $('#teamBtn').hidden=!state.canAnnounce; $('#payBtn').hidden=false; document.querySelector('.tabs').classList.add('five');
       $('#annBtn').hidden=!state.canAnnounce; $('#composerIn').classList.toggle('admin',state.canAnnounce);

@@ -325,7 +325,7 @@ body.on-chat .wrap{padding-bottom:140px}
 .s-re{border-color:var(--signal);color:var(--signal)}
 .s-x{border-color:var(--danger);color:var(--danger)}
 .resched{display:grid;gap:4px;font-size:.85rem;color:var(--muted);flex:1 1 180px}
-.resched input{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;color:var(--ink);font-size:1rem;min-height:42px;width:100%}
+.resched input,.resched select{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;color:var(--ink);font-size:1rem;min-height:42px;width:100%}
 .item-tools .btn-small{min-height:40px}
 
 .credit{display:grid;gap:4px;font-size:.85rem;color:var(--muted)}
@@ -611,7 +611,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // ===========================================================================================
 (function(){
   const $ = s => document.querySelector(s);
-  const state = { installs: [], db: null, sample: null, canImages: false, showPast: false, drafts: null, shotUrl: null, openItem: null, openMode: 'actions', rescheduleDraft: '', names: {}, pendingCredit: '', user: null, meId: null, assets: null, messages: [], tab: 'installs', profiles: {}, calMonth: null, calSel: '', attach: null, announcements: [], canAnnounce: false, announceMode: false, mentionMap: {}, suggestions: [], suggestIdx: 0 };
+  const WINDOWS = ['8:00 AM to 12:00 PM','9:00 AM to 1:00 PM','11:00 AM to 3:00 PM','12:00 PM to 4:00 PM','1:00 PM to 5:00 PM','3:00 PM to 7:00 PM','4:00 PM to 8:00 PM','8:00 AM to 5:00 PM'];
+  const state = { installs: [], db: null, sample: null, canImages: false, showPast: false, drafts: null, shotUrl: null, openItem: null, openMode: 'actions', rescheduleDraft: '', rescheduleWin: '', rescheduleWinOther: false, names: {}, pendingCredit: '', user: null, meId: null, assets: null, messages: [], tab: 'installs', profiles: {}, calMonth: null, calSel: '', attach: null, announcements: [], canAnnounce: false, announceMode: false, mentionMap: {}, suggestions: [], suggestIdx: 0 };
   const ICON_OK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
   const ICON_UNDO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 010 10h-3"/></svg>';
   const ICON_DEL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>';
@@ -744,16 +745,37 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         const inp=document.createElement('input'); inp.type='date'; inp.min=todayISO();
         inp.value=state.rescheduleDraft||''; inp.oninput=()=>{ state.rescheduleDraft=inp.value; };
         lab.append(inp);
+
+        const wlab=document.createElement('label'); wlab.className='resched';
+        wlab.textContent='New time window';
+        const sel=document.createElement('select');
+        const cur=(i.window||'').trim();
+        const opts=WINDOWS.slice();
+        if(cur&&!opts.includes(cur)) opts.unshift(cur);
+        const mk=(v,t)=>{ const o=document.createElement('option'); o.value=v; o.textContent=t; return o; };
+        sel.append(mk('','Same as before'+(cur?' ('+cur+')':'')));
+        opts.forEach(w=>sel.append(mk(w,w)));
+        sel.append(mk('__other','Other…'));
+        sel.value=state.rescheduleWinOther?'__other':(state.rescheduleWin||'');
+        const other=document.createElement('input'); other.type='text'; other.placeholder='8:00 AM to 12:00 PM';
+        other.hidden=!state.rescheduleWinOther; other.value=state.rescheduleWinOther?(state.rescheduleWin||''):'';
+        other.oninput=()=>{ state.rescheduleWin=other.value; };
+        sel.onchange=()=>{
+          if(sel.value==='__other'){ state.rescheduleWinOther=true; state.rescheduleWin=''; other.hidden=false; other.value=''; other.focus(); }
+          else { state.rescheduleWinOther=false; state.rescheduleWin=sel.value; other.hidden=true; }
+        };
+        wlab.append(sel,other);
+
         const save=document.createElement('button'); save.className='btn btn-primary btn-small'; save.textContent='Save new date';
-        save.onclick=()=>reschedule(i,inp.value);
+        save.onclick=()=>reschedule(i,inp.value,state.rescheduleWin);
         const back=document.createElement('button'); back.className='btn btn-ghost btn-small'; back.textContent='Back';
         back.onclick=()=>{ state.openMode='actions'; state.openItem=due?null:i.id; render(); };
-        row.append(lab,save,back);
+        row.append(lab,wlab,save,back);
       } else {
         const q=document.createElement('span'); q.className='status-q'; q.textContent=due?'How did this install go?':'Update status';
         const b1=document.createElement('button'); b1.className='sbtn s-ok'; b1.textContent='Installed'; b1.onclick=()=>setStatus(i.id,'installed');
         const b2=document.createElement('button'); b2.className='sbtn s-re'; b2.textContent='Rescheduled';
-        b2.onclick=()=>{ state.openItem=i.id; state.openMode='reschedule'; state.rescheduleDraft=''; render(); };
+        b2.onclick=()=>{ state.openItem=i.id; state.openMode='reschedule'; state.rescheduleDraft=''; state.rescheduleWin=''; state.rescheduleWinOther=false; render(); };
         const b3=document.createElement('button'); b3.className='sbtn s-x'; b3.textContent='Cancelled';
         b3.onclick=()=>{ if(confirm('Mark the install for '+(i.customer||agentName(i))+' as cancelled?')) setStatus(i.id,'cancelled'); };
         row.append(q,b1,b2,b3);
@@ -910,7 +932,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     if(hist.length){
       const t=document.createElement('h3'); t.textContent='Reschedules ('+hist.length+')'; sh.append(t);
       const ul=document.createElement('ul'); ul.className='hist';
-      hist.slice().reverse().forEach(r=>{ const li=document.createElement('li'); li.textContent=fmtShort(r.from)+' → '+weekday(r.to)+' '+fmtShort(r.to); const sm=document.createElement('small'); sm.textContent=[fmtStamp(r.at), r.by?'by '+personName(r.by):''].filter(Boolean).join(' '); li.append(sm); ul.append(li); });
+      hist.slice().reverse().forEach(r=>{ const li=document.createElement('li'); const wc=(r.toWin&&r.toWin!==r.fromWin)?' · '+r.toWin:''; li.textContent=fmtShort(r.from)+' → '+weekday(r.to)+' '+fmtShort(r.to)+wc; const sm=document.createElement('small'); sm.textContent=[fmtStamp(r.at), r.by?'by '+personName(r.by):''].filter(Boolean).join(' '); li.append(sm); ul.append(li); });
       sh.append(ul);
     }
     if(!refresh||wrap.hidden){ wrap.hidden=false; document.body.style.overflow='hidden'; sh.scrollTop=0; x.focus({preventScroll:true}); }
@@ -932,17 +954,22 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     }
     catch(e){ toast(writeErr(e)); }
   }
-  async function reschedule(i,newDate){
+  async function reschedule(i,newDate,newWin){
     if(!state.db) return;
     if(!parseISO(newDate)){ toast('Pick the new install date first.'); return; }
-    if(newDate===i.installDate){ toast('That\'s the same date. Pick a different one.'); return; }
+    const oldWin=(i.window||'').trim();
+    const win=(newWin||'').trim();
+    if(newDate===i.installDate&&(!win||win===oldWin)){ toast('That\'s the same date and time. Pick a different one.'); return; }
     const hist=Array.isArray(i.history)?i.history.slice(-19):[];
-    hist.push({from:i.installDate||'', to:newDate, at:new Date().toISOString(), by:state.meId||''});
+    hist.push({from:i.installDate||'', to:newDate, fromWin:oldWin, toWin:win||oldWin, at:new Date().toISOString(), by:state.meId||''});
+    const patch={installDate:newDate, status:'scheduled', rescheduleCount:(i.rescheduleCount||0)+1, history:hist};
+    if(win&&win!==oldWin) patch.window=win;
     try{
-      await state.db.doc('installs/'+i.id).update({installDate:newDate, status:'scheduled', rescheduleCount:(i.rescheduleCount||0)+1, history:hist});
-      state.openItem=null; state.openMode='actions'; state.rescheduleDraft='';
-      toast('Moved to '+weekday(newDate)+' '+fmtShort(newDate));
-      postSystem('Rescheduled '+agentRef(i)+'\'s install from '+fmtShort(i.installDate)+' to '+weekday(newDate)+' '+fmtShort(newDate)+'.');
+      await state.db.doc('installs/'+i.id).update(patch);
+      state.openItem=null; state.openMode='actions'; state.rescheduleDraft=''; state.rescheduleWin=''; state.rescheduleWinOther=false;
+      const shownWin=win||oldWin;
+      toast('Moved to '+weekday(newDate)+' '+fmtShort(newDate)+(shownWin?', '+shownWin:''));
+      postSystem('Rescheduled '+agentRef(i)+'\'s install from '+fmtShort(i.installDate)+(oldWin?' ('+oldWin+')':'')+' to '+weekday(newDate)+' '+fmtShort(newDate)+(shownWin?' ('+shownWin+')':'')+'.');
     }catch(e){ toast(writeErr(e)); }
   }
   async function removeInstall(i){
@@ -2176,7 +2203,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         patch.history=hist;
       }
       save.disabled=true; save.textContent='Saving…';
-      try{ await state.db.collection('installs').doc(id).update(patch); toast('Order updated'); setTimeout(()=>openDetail(id),150); }
+      try{ await state.db.doc('installs/'+id).update(patch); toast('Order updated'); setTimeout(()=>openDetail(id),150); }
       catch(e){ msg.className='team-msg err'; msg.textContent=writeErr(e); save.disabled=false; save.textContent='Save changes'; }
     };
     acts.append(save,cancel); form.append(acts);

@@ -3077,7 +3077,11 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   const standalone=window.navigator.standalone===true||window.matchMedia('(display-mode: standalone)').matches;
   if(!standalone) return;
   const ind=document.getElementById('ptr'); const TH=75; let y0=null, dist=0, busy=false;
-  const blocked=t=>t.closest('input,textarea,select,.composer,.suggest,#gate:not([hidden]),.sheet-wrap')||!document.getElementById('review').hidden;
+  // The review panel sits inside the Installs tab, so its `hidden` flag can stay false while the tab
+  // itself is switched away. Test whether it is actually on screen, not what the attribute says.
+  const onScreen=el=>!!(el&&el.getClientRects().length);
+  const blocked=t=>!!t.closest('input,textarea,select,.composer,.suggest,#gate:not([hidden]),.sheet-wrap')
+    ||onScreen(document.getElementById('review'));
   const show=d=>{ const p=Math.min(d/TH,1); ind.style.opacity=p; ind.style.transform='translateY('+(Math.min(d,TH+20)-60)+'px)'; ind.classList.toggle('ready',d>=TH); };
   window.addEventListener('touchstart',e=>{ if(busy||window.scrollY>0||e.touches.length!==1||blocked(e.target)){ y0=null; return; } y0=e.touches[0].clientY; dist=0; },{passive:true});
   window.addEventListener('touchmove',e=>{ if(y0===null) return; const d=(e.touches[0].clientY-y0)*0.5; if(d<=0||window.scrollY>0){ dist=0; show(0); return; } dist=d; if(e.cancelable) e.preventDefault(); show(d); },{passive:false});

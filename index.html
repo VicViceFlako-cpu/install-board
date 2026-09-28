@@ -1052,8 +1052,11 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   function draftRow(d,idx){
     const r=document.createElement('div'); r.className='row-edit'; r.dataset.idx=idx;
     const useIds=!!(state.user&&state.meId);
+    const canCredit=!!state.isOwner;
     const who=useIds
-      ? '<div class="credit"><span class="credit-lab">Credited to</span><div class="credit-line"><b class="credit-name"></b><button type="button" class="linkish credit-change">Change</button></div><div class="credit-pick" hidden><input type="search" placeholder="Search teammates" aria-label="Search teammates"><div class="credit-list"></div></div></div>'
+      ? ('<div class="credit"><span class="credit-lab">Credited to</span><div class="credit-line"><b class="credit-name"></b>'
+         +(canCredit?'<button type="button" class="linkish credit-change">Change</button>':'')
+         +'</div>'+(canCredit?'<div class="credit-pick" hidden><input type="search" placeholder="Search teammates" aria-label="Search teammates"><div class="credit-list"></div></div>':'')+'</div>')
       : '<label>Sales agent<input data-f="agent" autocomplete="off"></label>';
     r.innerHTML=who+'<label>Customer *<input data-f="customer" autocomplete="off"></label><div class="dates"><label>Sale date *<input type="date" data-f="saleDate"></label><label>Install date *<input type="date" data-f="installDate"></label></div>'
       +'<div class="dates"><label>Appointment window<input data-f="window" placeholder="Leave blank for self-install"></label><label>Order # (MON) *<input data-f="mon" autocomplete="off" inputmode="numeric"></label></div>'
@@ -1064,10 +1067,13 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const ex=d.mon&&state.installs.find(i=>i.mon&&i.mon===d.mon);
     if(ex){ const dn=r.querySelector('.dup-note'); dn.hidden=false; dn.textContent=state.canAnnounce?'Already on the board for '+fmtShort(ex.installDate)+'. Saving updates it.':'Already on the board for '+fmtShort(ex.installDate)+'. Only a manager can change it, so this row will be skipped.'; }
     if(useIds){
+      if(!canCredit) d.agentId=state.meId||'';
       r.querySelector('.credit-name').textContent=creditLabel(d.agentId);
-      const pick=r.querySelector('.credit-pick'), inp=pick.querySelector('input'), list=pick.querySelector('.credit-list');
-      r.querySelector('.credit-change').onclick=()=>{ pick.hidden=!pick.hidden; if(!pick.hidden){ inp.value=''; searchCredit('',list,d,r); } };
-      inp.oninput=()=>searchCredit(inp.value,list,d,r);
+      if(canCredit){
+        const pick=r.querySelector('.credit-pick'), inp=pick.querySelector('input'), list=pick.querySelector('.credit-list');
+        r.querySelector('.credit-change').onclick=()=>{ pick.hidden=!pick.hidden; if(!pick.hidden){ inp.value=''; searchCredit('',list,d,r); } };
+        inp.oninput=()=>searchCredit(inp.value,list,d,r);
+      }
     } else r.querySelector('[data-f=agent]').value=d.agent||'';
     r.querySelector('[data-f=saleDate]').value=d.saleDate||'';
     r.querySelector('[data-f=installDate]').value=d.installDate||'';
@@ -1492,8 +1498,11 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       if(m.imageId){ const im=document.createElement('img'); im.className='msg-img'; setPhoto(im,m.imageId); im.alt='Photo from '+name; im.loading='lazy'; body.append(im); }
       const acts=document.createElement('div'); acts.className='msg-actions';
       if((m.imageId||looksLikeSale(m.text)) && !isSys && !isAnn){
-        const add=document.createElement('button'); add.textContent=m.authorId===state.meId?'Add sale to board':'Add sale to board for them';
-        add.onclick=()=>readFromChat(m); acts.append(add);
+        const mine=m.authorId===state.meId;
+        if(mine||state.isOwner){
+          const add=document.createElement('button'); add.textContent=mine?'Add sale to board':'Add sale to board for them';
+          add.onclick=()=>readFromChat(m); acts.append(add);
+        }
       }
       if(m.authorId&&m.authorId===state.meId){
         const del=document.createElement('button'); del.className='del'; del.textContent='Delete';
@@ -1508,7 +1517,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   }
   function looksLikeSale(t){ return !!t&&/\d{1,2}[\/.-]\d{1,2}|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b/i.test(t); }
   function readFromChat(m){
-    showTab('installs'); state.pendingCredit=m.authorId||state.meId||''; clearShot();
+    showTab('installs'); state.pendingCredit=(state.isOwner? (m.authorId||state.meId) : state.meId)||''; clearShot();
     const plain=(m.text||'').replace(/@\{[^}]+\}/g,'').trim();
     if(plain&&!m.imageId){ readSales(null,plain.slice(0,8000)); return; }
     if(m.imageId){ photoUrl(m.imageId).then(u=>{ state.shotUrl=u; openPaste(); }); return; }

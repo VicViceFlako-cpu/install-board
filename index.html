@@ -897,7 +897,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   // Tapping the ⭐ button counts as sent; the detail sheet can put it back if it was a mis-tap.
   async function markReferral(id,sent){
     if(!state.db) return;
-    try{ await state.db.doc('installs/'+id).update({referralAt: sent? new Date().toISOString() : null}); }
+    const at=sent? new Date().toISOString() : '';
+    try{ await state.db.doc('installs/'+id).update({referralAt: at||null}); patchLocal(id,{referralAt:at}); }
     catch(e){ toast(writeErr(e)); }
   }
   function referralSms(i){
@@ -990,12 +991,25 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&state.detailId) closeDetail(); });
 
   // ---------- db ----------
+  // Realtime can lag or drop; an action you just took should land on screen now.
+  function patchLocal(id,patch){
+    const i=(state.installs||[]).find(x=>x.id===id);
+    if(!i) return;
+    Object.assign(i,patch); render();
+  }
+  function dropLocal(id){
+    const before=(state.installs||[]).length;
+    state.installs=(state.installs||[]).filter(x=>x.id!==id);
+    if(state.installs.length!==before) render();
+  }
   async function setStatus(id,status){
     if(!state.db) return;
     try{
       const i=state.installs.find(x=>x.id===id);
-      await state.db.doc('installs/'+id).update({status, statusAt:new Date().toISOString(), statusBy:state.meId||''});
+      const now=new Date().toISOString();
+      await state.db.doc('installs/'+id).update({status, statusAt:now, statusBy:state.meId||''});
       if(state.openItem===id){ state.openItem=null; }
+      patchLocal(id,{status, statusAt:now, statusBy:state.meId||''});
       toast(status==='installed'?'Marked installed':status==='cancelled'?'Marked cancelled':'Moved back to scheduled');
       const who=(i?agentRef(i):'an agent')+'\'s '+(i?fmtShort(i.installDate):'')+' install';
       if(status==='installed') postSystem('Marked '+who+' as installed.');
@@ -1016,6 +1030,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     try{
       await state.db.doc('installs/'+i.id).update(patch);
       state.openItem=null; state.openMode='actions'; state.rescheduleDraft=''; state.rescheduleWin=''; state.rescheduleWinOther=false;
+      patchLocal(i.id,patch);
       const shownWin=win||oldWin;
       toast('Moved to '+weekday(newDate)+' '+fmtShort(newDate)+(shownWin?', '+shownWin:''));
       postSystem('Rescheduled '+agentRef(i)+'\'s install from '+fmtShort(i.installDate)+(oldWin?' ('+oldWin+')':'')+' to '+weekday(newDate)+' '+fmtShort(newDate)+(shownWin?' ('+shownWin+')':'')+'.');
@@ -1024,7 +1039,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   async function removeInstall(i){
     if(!state.db) return;
     if(!confirm('Delete the install for '+(i.customer||agentName(i))+' on '+fmtShort(i.installDate)+'?')) return;
-    try{ await state.db.doc('installs/'+i.id).delete(); toast('Install deleted'); }
+    try{ await state.db.doc('installs/'+i.id).delete(); dropLocal(i.id); toast('Install deleted'); }
     catch(e){ toast(writeErr(e)); }
   }
   function writeErr(e){ return e&&(e.code==='42501'||e.code==='not_granted') ? 'You don\'t have permission to do that.' : 'Couldn\'t save. Check your connection and try again.'; }
@@ -2361,7 +2376,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         patch.history=hist;
       }
       save.disabled=true; save.textContent='Saving…';
-      try{ await state.db.doc('installs/'+id).update(patch); toast('Order updated'); setTimeout(()=>openDetail(id),150); }
+      try{ await state.db.doc('installs/'+id).update(patch); patchLocal(id,patch); toast('Order updated'); setTimeout(()=>openDetail(id),150); }
       catch(e){ msg.className='team-msg err'; msg.textContent=writeErr(e); save.disabled=false; save.textContent='Save changes'; }
     };
     acts.append(save,cancel); form.append(acts);

@@ -2907,7 +2907,10 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   // ---------- wiring ----------
   $('#uploadBtn').onclick=()=>{ clearShot(); state.pendingCredit=state.meId||''; openPaste(); };
   $('#manualBtn').onclick=()=>{ clearShot(); openReview([{agentId:state.meId||'',agent:'',saleDate:todayISO(),installDate:''}],{title:'Add install',hint:'Enter the dates, then save.'}); ensureNames([state.meId]); };
-  $('#agentFilter').onchange=render; $('#search').oninput=render;
+  // Typing re-ran the whole board on every keystroke; wait for a pause instead.
+  let searchTimer=null;
+  $('#agentFilter').onchange=render;
+  $('#search').oninput=()=>{ clearTimeout(searchTimer); searchTimer=setTimeout(render,180); };
   $('#pastBtn').onclick=()=>{ state.showPast=!state.showPast; render(); };
   // re-render at midnight-ish so "today" stays right on an open tab
   setInterval(()=>{ if(!state.drafts&&!state.openItem) render(); },60*60*1000);

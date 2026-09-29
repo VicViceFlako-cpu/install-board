@@ -265,6 +265,9 @@ button{cursor:pointer}
 .badge{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--today);color:#1B1400;font-size:.75rem;margin-left:6px;vertical-align:1px}
 
 /* chat */
+.selfrow{display:flex;align-items:center;gap:7px;margin-top:7px;font-size:.85rem;color:var(--muted)}
+.selfrow input{width:18px;height:18px;flex:0 0 auto}
+.selfrow label{margin:0;font:inherit;color:inherit}
 .conv-pick{max-width:720px;margin:0 auto 8px;display:flex;align-items:center;gap:8px;background:none;border:0;
   padding:4px 2px;font:inherit;font-size:.9rem;font-weight:600;color:var(--muted);width:100%;min-height:32px}
 .conv-pick .dot{width:8px;height:8px;border-radius:50%;background:var(--signal);flex:0 0 auto}
@@ -845,7 +848,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const label=mine?'Your next install: ':'Next install: ';
     p1.textContent = todayCount ? (mine?(todayCount===1?'You have an install today':'You have installs today'):(todayCount===1?'Install happening today':'Installs happening today')) : label+(nxt.customer||agentName(nxt));
     const p2=document.createElement('p'); p2.className='meta';
-    const win=x=>x.window?' ('+x.window.replace(/:00/g,'').replace(/\s*to\s*/i,'–')+')':'';
+    const win=x=>x.selfInstall?' (self-install)':(x.window?' ('+x.window.replace(/:00/g,'').replace(/\s*to\s*/i,'–')+')':'');
     p2.textContent = todayCount
       ? today.map(i=>(i.customer||agentName(i))+(mine?win(i):'')).join(', ')
       : weekday(nxt.installDate)+', '+fmtShort(nxt.installDate)+(mine?win(nxt):'');
@@ -870,6 +873,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   // When does the appointment window end today? (no window: assume 5 PM)
   function windowEnd(i){
     const d=parseISO(i.installDate); if(!d) return null;
+    if(i.selfInstall){ const e=new Date(d); e.setHours(17,0,0,0); return e; }
     const times=[...(i.window||'').matchAll(/(\d{1,2})(?::(\d{2}))?\s*([AaPp])\.?\s*[Mm]/g)];
     let h=17, m=0;
     if(times.length){ const t=times[times.length-1]; h=(+t[1])%12+(/p/i.test(t[3])?12:0); m=+(t[2]||0); }
@@ -886,6 +890,17 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     // two weeks on and paid: the service stuck, so it's safe to ask who else needs it
     if(st==='installed'&&i.payoutStatus==='paid'&&!i.referralAt&&n<=-14&&n>=-60) return 'referral';
     return null;
+  }
+  function selfInstallSms(i){
+    const d=(i.phone||'').replace(/\D/g,''); if(d.length<10) return '';
+    const first=customerFirst(i.customer), me=myFirstName();
+    const body='Hi'+(first?' '+first:'')+'! This is '+(me||'your rep')+' with Verizon. Your self-install kit should be ready to set up today. Follow the steps in the box and you\u2019ll be online in a few minutes. If anything doesn\u2019t go smoothly, reply here and I\u2019ll walk you through it. Thank you!';
+    return 'sms:+1'+d.slice(-10)+'?&body='+encodeURIComponent(body);
+  }
+  function selfCheckSms(i){
+    const d=(i.phone||'').replace(/\D/g,''); const first=customerFirst(i.customer), me=myFirstName();
+    const body='Hi'+(first?' '+first:'')+'! This is '+(me||'your rep')+' with Verizon. Just checking in \u2014 were you able to get your internet set up? If anything isn\u2019t working right, reply here and I\u2019ll help get it sorted out. Thank you!';
+    return 'sms:+1'+d.slice(-10)+'?&body='+encodeURIComponent(body);
   }
   function confirmSms(i){
     const d=(i.phone||'').replace(/\D/g,''); const first=customerFirst(i.customer), me=myFirstName();
@@ -911,8 +926,11 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const ph=textPhase(i); if(!ph) return null;
     const a=document.createElement('a'); a.className='text-btn'+(ph==='remind'?'':' confirm');
     if(ph==='referral') a.addEventListener('click',()=>{ markReferral(i.id,true); });
-    a.href=ph==='remind'?reminderSms(i):ph==='referral'?referralSms(i):confirmSms(i);
-    a.textContent=ph==='remind'?'💬 Text install reminder':ph==='referral'?'⭐ Text 2-week check-in & referral ask':'✅ Text install check-in';
+    const self=!!i.selfInstall;
+    a.href=ph==='remind'?(self?selfInstallSms(i):reminderSms(i)):ph==='referral'?referralSms(i):(self?selfCheckSms(i):confirmSms(i));
+    a.textContent=ph==='remind'?(self?'📦 Text self-install steps':'💬 Text install reminder')
+      :ph==='referral'?'⭐ Text 2-week check-in & referral ask'
+      :(self?'✅ Text self-install check-in':'✅ Text install check-in');
     a.setAttribute('aria-label',(ph==='remind'?'Text install reminder to ':ph==='referral'?'Text two week check in and referral request to ':'Text install check-in to ')+(i.customer||'the customer'));
     return a;
   }
@@ -946,7 +964,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     row('Order # (MON)', i.mon||'');
     row('Sales agent', agentName(i));
     row('Install date', fmtLong(i.installDate));
-    row('Appointment', i.window||'');
+    row('Appointment', i.selfInstall?'Self-install \u2014 no technician':(i.window||''));
     row('Sale date', i.saleDate?fmtLong(i.saleDate):'');
     if(i.address){ const a=document.createElement('a'); a.href='https://maps.apple.com/?q='+encodeURIComponent(i.address); a.target='_blank'; a.rel='noopener'; a.textContent=i.address; row('Address',a); }
     if(i.phone){ const a=document.createElement('a'); a.href='tel:'+i.phone; a.textContent=fmtPhone(i.phone); row('Phone',a); }
@@ -1074,10 +1092,16 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
          +'</div>'+(canCredit?'<div class="credit-pick" hidden><input type="search" placeholder="Search teammates" aria-label="Search teammates"><div class="credit-list"></div></div>':'')+'</div>')
       : '<label>Sales agent<input data-f="agent" autocomplete="off"></label>';
     r.innerHTML=who+'<label>Customer *<input data-f="customer" autocomplete="off"></label><div class="dates"><label>Sale date *<input type="date" data-f="saleDate"></label><label>Install date *<input type="date" data-f="installDate"></label></div>'
-      +'<div class="dates"><label>Appointment window<input data-f="window" placeholder="Leave blank for self-install"></label><label>Order # (MON) *<input data-f="mon" autocomplete="off" inputmode="numeric"></label></div>'
+      +'<div class="dates"><label>Install time *<input data-f="window" placeholder="8:00 AM to 12:00 PM">'
+      +'<span class="selfrow"><input type="checkbox" data-f="selfInstall" id="si'+idx+'"><label for="si'+idx+'">Self-install \u2014 no technician</label></span></label>'
+      +'<label>Order # (MON) *<input data-f="mon" autocomplete="off" inputmode="numeric"></label></div>'
       +'<label>Service address *<input data-f="address" autocomplete="off"></label><label>Customer phone *<input data-f="phone" inputmode="tel"></label>'
       +'<div class="row-tools"><span class="dup-note" hidden></span><button class="linkish rm" type="button">Remove</button></div>';
     ['customer','window','mon','address'].forEach(f=>{ r.querySelector('[data-f='+f+']').value=d[f]||''; });
+    { const si=r.querySelector('[data-f=selfInstall]'), w=r.querySelector('[data-f=window]');
+      const sync=()=>{ w.disabled=si.checked; if(si.checked) w.value=''; w.placeholder=si.checked?'Not needed':'8:00 AM to 12:00 PM'; };
+      si.checked=!!d.selfInstall; sync();
+      si.onchange=()=>{ d.selfInstall=si.checked; sync(); }; }
     r.querySelector('[data-f=phone]').value=fmtPhone(d.phone);
     const ex=d.mon&&state.installs.find(i=>i.mon&&i.mon===d.mon);
     if(ex){ const dn=r.querySelector('.dup-note'); dn.hidden=false; dn.textContent=state.canAnnounce?'Already on the board for '+fmtShort(ex.installDate)+'. Saving updates it.':'Already on the board for '+fmtShort(ex.installDate)+'. Only a manager can change it, so this row will be skipped.'; }
@@ -1113,7 +1137,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   function syncDrafts(){
     document.querySelectorAll('#review .row-edit').forEach(r=>{
       const d=state.drafts[+r.dataset.idx]; if(!d) return;
-      r.querySelectorAll('input[data-f]').forEach(inp=>d[inp.dataset.f]=inp.value.trim());
+      r.querySelectorAll('input[data-f]').forEach(inp=>{
+        if(inp.type==='checkbox') d[inp.dataset.f]=inp.checked; else d[inp.dataset.f]=inp.value.trim(); });
     });
   }
   function closeReview(){ const p=$('#review'); p.hidden=true; p.innerHTML=''; state.drafts=null; clearShot(); }
@@ -1127,6 +1152,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     if(!(d.customer||'').trim()) return 'a customer name';
     if(!parseISO(d.saleDate)) return 'a sale date';
     if(!parseISO(d.installDate)) return 'an install date';
+    if(!d.selfInstall&&!(d.window||'').trim()) return 'an install time, or the self-install box ticked';
     const md=(d.mon||'').replace(/\D/g,'');
     if(!md) return 'an order number (MON)';
     if(md.length!==11) return 'an 11-digit MON — that one has '+md.length+(md.length===1?' digit':' digits');
@@ -1144,7 +1170,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     try{
       const added=[], updated=[]; let skipped=0;
       for(const d of state.drafts){
-        const extra={customer:d.customer||'', address:d.address||'', mon:(d.mon||'').toUpperCase(), window:d.window||'', orderType:d.orderType||'', phone:(d.phone||'').replace(/\D/g,''), vzStatus:d.vzStatus||''};
+        const extra={customer:d.customer||'', address:d.address||'', mon:(d.mon||'').toUpperCase(), window:d.selfInstall?'':(d.window||''), selfInstall:!!d.selfInstall, orderType:d.orderType||'', phone:(d.phone||'').replace(/\D/g,''), vzStatus:d.vzStatus||''};
         const ex=extra.mon&&state.installs.find(i=>i.mon===extra.mon);
         if(ex&&!state.canAnnounce){ skipped++; continue; }
         if(ex){
@@ -1197,11 +1223,29 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const iAd=idx('service address'); const adl=iAd>=0?lines[iAd+1]:''; out.address=(adl&&!isLabel(adl)&&/[a-z]/i.test(adl)&&/\d/.test(adl)&&!/^[A-Z]{2}\d{8,14}$/.test(adl))?adl:'';
     const mon=text.match(/\b[A-Z]{2}\d{8,14}\b/); out.mon=mon?mon[0]:'';
     const ot=lines.find(l=>/^(new install|move|change|upgrade|transfer|reconnect|add|modify)\b/i.test(l)&&!isLabel(l)); out.orderType=ot||'';
-    const ap=text.match(/\d{1,2}:\d{2}\s*[AP]M\s*(?:to|-|–)\s*\d{1,2}:\d{2}\s*[AP]M/i); out.window=ap?ap[0].replace(/\s+/g,' '):'';
+    // Appointment window: Verizon writes this several ways (8 AM to 12 PM, 1:00 PM - 5:00 PM,
+    // "between 8:00 AM and 12:00 PM", or the two times on separate lines). Look beside the label
+    // first, then anywhere, and normalise what we find so the reminder text always reads the same.
+    out.window=readWindow(text,lines,low);
+    out.selfInstall=/self[\s-]?install|customer[\s-]?install|self[\s-]?setup/i.test(text);
+    if(out.selfInstall) out.window='';
     const st=lines.find(l=>/^(confirmed|pending|scheduled|completed|cancell?ed|held|in progress)$/i.test(l)); out.vzStatus=st||'';
     const iMob=idx('mobile telephone number');
     if(iMob>=0){ for(let k=iMob+1;k<lines.length;k++){ const dg=lines[k].replace(/\D/g,''); if(isLabel(lines[k])) continue; if(dg.length===10&&/^[\d\s().-]+$/.test(lines[k])){ out.phone=dg; break; } if(/[a-z]/i.test(lines[k])) break; } }
     return out;
+  }
+  const WIN_T='(\\d{1,2})(?::(\\d{2}))?\\s*([AaPp])\\.?\\s*[Mm]\\.?';
+  // Separator: a word or dash, or at most one line break — so two unrelated times can't be joined.
+  const WIN_SEP='(?:\\s*(?:to|and|thru|through|until|till|[-\u2013\u2014/])\\s*|[ \\t]*\\n?[ \\t]*)';
+  const WIN_RE=new RegExp(WIN_T+WIN_SEP+WIN_T);
+  const winTime=(h,m,ap)=>(+h)+':'+(m||'00')+' '+(ap.toUpperCase()==='A'?'AM':'PM');
+  const winPair=m=>winTime(m[1],m[2],m[3])+' to '+winTime(m[4],m[5],m[6]);
+  function readWindow(text,lines,low){
+    const li=low.findIndex(l=>/^(appointment\s*(time|window)|arrival\s*window|time\s*window|appointment)\s*:?$/.test(l));
+    if(li>=0){ const m=lines.slice(li+1,li+4).join('\n').match(WIN_RE); if(m) return winPair(m); }
+    for(const l of lines){ if(!/appointment|arrival|window/i.test(l)) continue; const m=l.match(WIN_RE); if(m) return winPair(m); }
+    const m=text.match(WIN_RE);
+    return m? winPair(m) : '';
   }
   function fmtPhone(d){ d=(d||'').replace(/\D/g,''); return d.length===10?'('+d.slice(0,3)+') '+d.slice(3,6)+'-'+d.slice(6):d; }
 
@@ -1451,7 +1495,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       const w=document.createElement('div'); w.className='who'; w.textContent=agentName(i);
       const mo=document.createElement('div'); mo.className='mon'; mo.textContent=i.mon||'No order #';
       const sub=document.createElement('div'); sub.className='sub';
-      sub.textContent=[i.customer,i.window,i.status==='installed'?'Installed':(i.rescheduleCount?'Rescheduled '+i.rescheduleCount+'×':'')].filter(Boolean).join(' · ');
+      sub.textContent=[i.customer,i.selfInstall?'self-install':i.window,i.status==='installed'?'Installed':(i.rescheduleCount?'Rescheduled '+i.rescheduleCount+'×':'')].filter(Boolean).join(' · ');
       r.setAttribute('role','button'); r.tabIndex=0; r.setAttribute('aria-label','Order details for '+(i.customer||agentName(i)));
       r.onclick=()=>openDetail(i.id);
       r.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); openDetail(i.id); } };
@@ -2344,6 +2388,14 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       if(type==='tel'){ inp.inputMode='tel'; }
       l.append(inp); form.append(l); fields[key]=inp;
     };
+    const addCheck=(label,val,tiedTo)=>{
+      const row=document.createElement('div'); row.className='selfrow'; row.style.margin='0 0 10px';
+      const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=val; cb.id='editSelf';
+      const lb=document.createElement('label'); lb.htmlFor='editSelf'; lb.textContent=label;
+      const sync=()=>{ if(tiedTo){ tiedTo.disabled=cb.checked; if(cb.checked) tiedTo.value=''; } };
+      cb.onchange=sync; sync();
+      row.append(cb,lb); form.append(row); return cb;
+    };
     const cl=document.createElement('label'); cl.textContent='Credit this order to';
     const csel=document.createElement('select');
     Object.keys(state.profiles||{}).sort((a,b)=>agentLabel(a).localeCompare(agentLabel(b))).forEach(id2=>{
@@ -2352,7 +2404,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     add('customer','Customer name','text',i.customer);
     add('saleDate','Sale date','date',i.saleDate);
     add('installDate','Install date','date',i.installDate);
-    add('window','Appointment window','text',i.window);
+    add('window','Install time','text',i.window);
+    fields.selfInstall=addCheck('Self-install \u2014 no technician', !!i.selfInstall, fields.window);
     add('phone','Phone','tel',fmtPhone(i.phone));
     add('address','Service address','text',i.address);
     add('mon','Order # (MON)','text',i.mon);
@@ -2368,8 +2421,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       const sd=fields.saleDate.value, idt=fields.installDate.value;
       if(!parseISO(idt)){ msg.className='team-msg err'; msg.textContent='Pick an install date.'; return; }
       if(sd&&parseISO(sd)&&idt<sd){ msg.className='team-msg err'; msg.textContent='The install date is before the sale date. Use Swap if they got reversed.'; return; }
+      const selfI=!!(fields.selfInstall&&fields.selfInstall.checked);
       const patch={agentId:fields.agentId.value||'', customer:fields.customer.value.trim(), saleDate:parseISO(sd)?sd:'', installDate:idt,
-        window:fields.window.value.trim(), phone:phoneDigits(fields.phone.value), address:fields.address.value.trim(), mon:fields.mon.value.trim()};
+        window:selfI?'':fields.window.value.trim(), selfInstall:selfI, phone:phoneDigits(fields.phone.value), address:fields.address.value.trim(), mon:fields.mon.value.trim()};
       if(idt!==i.installDate){
         const hist=Array.isArray(i.history)?i.history.slice():[];
         hist.push({from:i.installDate,to:idt,at:new Date().toISOString(),by:state.meId||''});
@@ -2920,7 +2974,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   // An adapter with the same small API the board already uses (collection().add, doc().update, onSnapshot),
   // mapping camelCase fields in the app to snake_case columns in Postgres.
   const COLS={
-    installs:{agentId:'agent_id',customer:'customer',address:'address',phone:'phone',mon:'mon',saleDate:'sale_date',installDate:'install_date',window:'appt_window',vzStatus:'vz_status',status:'status',rescheduleCount:'reschedule_count',history:'history',createdBy:'created_by',createdAt:'created_at',statusAt:'status_at',statusBy:'status_by',payoutStatus:'payout_status',paidAt:'paid_at',paidBy:'paid_by',payoutAmount:'payout_amount',referralAt:'referral_at'},
+    installs:{agentId:'agent_id',customer:'customer',address:'address',phone:'phone',mon:'mon',saleDate:'sale_date',installDate:'install_date',window:'appt_window',selfInstall:'self_install',vzStatus:'vz_status',status:'status',rescheduleCount:'reschedule_count',history:'history',createdBy:'created_by',createdAt:'created_at',statusAt:'status_at',statusBy:'status_by',payoutStatus:'payout_status',paidAt:'paid_at',paidBy:'paid_by',payoutAmount:'payout_amount',referralAt:'referral_at'},
     messages:{authorId:'author_id',text:'text',imageId:'image_path',mentions:'mentions',kind:'kind',createdAt:'created_at',dmWith:'dm_with'},
     announcements:{authorId:'author_id',text:'text',mentions:'mentions',createdAt:'created_at'},
     wireless_sales:{agentId:'agent_id',customer:'customer',saleDate:'sale_date',lineCount:'line_count',createdBy:'created_by',createdAt:'created_at',deviceFollowupAt:'device_followup_at'},
@@ -2930,6 +2984,10 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   function toRow(table,obj){ const map=COLS[table], row={}; for(const k in obj){ const c=map[k]; if(!c) continue; let v=obj[k]; if(v===''&&NULLABLE.has(c)) v=null; if(c==='kind'&&!v) v='chat'; row[c]=v; } return row; }
   function fromRow(table,row){ const map=COLS[table], o={id:row.id}; for(const k in map){ const v=row[map[k]]; o[k]=v==null?'':v; } if(o.mentions==='') o.mentions=[]; if(o.history==='') o.history=[]; return o; }
   function wrapErr(error){ return {code:error.code||'error',message:error.message}; }
+  // Orders are read through a view that withholds a customer's address, phone and order number
+  // from anyone but the credited agent and a manager. Writes still go to the table itself.
+  const READ_FROM={installs:'installs_read'};
+  const readTable=t=>READ_FROM[t]||t;
   function makeDb(){
     function query(table,order,dir,lim){
       return {
@@ -2939,7 +2997,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         onSnapshot(next,onErr){
           let timer=null, alive=true;
           const load=async()=>{
-            let q=sb.from(table).select('*');
+            let q=sb.from(readTable(table)).select('*');
             if(order) q=q.order(order,{ascending:dir!=='desc'}); else q=q.order('created_at',{ascending:true});
             q=q.limit(lim||5000);
             const {data,error}=await q;
@@ -2949,6 +3007,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
             next({docs,size:docs.length,empty:!docs.length});
           };
           const bump=()=>{ clearTimeout(timer); timer=setTimeout(load,150); };
+          // Changes are announced by the underlying table, never the view.
           const ch=sb.channel('rt-'+table+'-'+Math.random().toString(36).slice(2)).on('postgres_changes',{event:'*',schema:'public',table},bump).subscribe(st=>{ if(st==='SUBSCRIBED') bump(); });
           load();
           document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') bump(); });

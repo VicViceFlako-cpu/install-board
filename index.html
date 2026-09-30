@@ -3138,7 +3138,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
   // ---------- territory map ----------
   const T_OUT={noanswer:'No answer',notint:'Not interested',callback:'Callback',sold:'Sold',noaccess:"Couldn't get in"};
-  const T={b:[],z:[],v:[],map:null,layer:null,me:null,tiles:null,view:'list',filter:'all',sel:null,oc:null,loaded:false};
+  const T={b:[],z:[],v:[],num:{},line:null,map:null,layer:null,me:null,tiles:null,view:'list',filter:'all',sel:null,oc:null,loaded:false};
   const tEsc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const tIsToday=t=>new Date(t).toDateString()===new Date().toDateString();
   function tAgo(t){ const m=Math.round((Date.now()-new Date(t))/60000); if(m<1) return 'just now'; if(m<60) return m+'m ago'; const h=Math.round(m/60); if(h<24) return h+'h ago'; return Math.round(h/24)+'d ago'; }
@@ -3150,6 +3150,31 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   function tAgentOpts(sel){ return Object.values(state.profiles||{}).filter(p=>p.full_name).sort((a,b)=>a.full_name.localeCompare(b.full_name)).map(p=>'<option value="'+p.id+'"'+(p.id===sel?' selected':'')+'>'+tEsc(p.full_name)+'</option>').join(''); }
   const tName=id=>personName(id).replace(/ \(you\)$/,'');
 
+  // open-path route: best of nearest-neighbour from every start, improved with 2-opt + or-opt
+  function tRoute(pts){
+    const n=pts.length; if(n<3) return pts.map((_,i)=>i);
+    const R=6371000,r=x=>x*Math.PI/180;
+    const D=pts.map(a=>pts.map(b=>{const dl=r(b.lat-a.lat),dn=r(b.lng-a.lng);const h=Math.sin(dl/2)**2+Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h));}));
+    const len=p=>{let s=0;for(let i=1;i<p.length;i++)s+=D[p[i-1]][p[i]];return s;};
+    function improve(p){ let better=true;
+      while(better){ better=false;
+        for(let i=0;i<n-1;i++) for(let k=i+1;k<n;k++){ // 2-opt on open path (reverse p[i..k])
+          const a=i>0?p[i-1]:-1, b=p[i], c=p[k], d=k<n-1?p[k+1]:-1;
+          const before=(a<0?0:D[a][b])+(d<0?0:D[c][d]), after=(a<0?0:D[a][c])+(d<0?0:D[b][d]);
+          if(after+1e-6<before){ p.splice(i,k-i+1,...p.slice(i,k+1).reverse()); better=true; } }
+        for(let s=1;s<=3;s++) for(let i=0;i+s<=n;i++){ // or-opt: move segment of length s
+          const seg=p.slice(i,i+s), rest=p.slice(0,i).concat(p.slice(i+s)); const base=len(p);
+          for(let j=0;j<=rest.length;j++){ if(j===i) continue;
+            for(const sg of [seg,seg.slice().reverse()]){ const q=rest.slice(0,j).concat(sg,rest.slice(j)); if(len(q)+1e-6<base){ p.splice(0,n,...q); better=true; break; } }
+            if(better) break; }
+          if(better) break; }
+      } return p; }
+    let best=null,bl=Infinity;
+    for(let s=0;s<n;s++){ const used=new Set([s]),p=[s];
+      while(p.length<n){ const l=p[p.length-1]; let m=-1,md=Infinity; for(let j=0;j<n;j++) if(!used.has(j)&&D[l][j]<md){md=D[l][j];m=j;} p.push(m);used.add(m); }
+      improve(p); const L=len(p); if(L<bl){bl=L;best=p.slice();} }
+    return best;
+  }
   let tTok=0, tTimer=null;
   async function loadTerritory(){
     const tok=++tTok;
@@ -3160,7 +3185,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     ]);
     if(tok!==tTok) return;
     if(b.error||z.error||v.error){ if(!T.loaded) $('#tPanel').innerHTML='<p class="status error">Couldn\'t load the territory. Check your connection, then reload.</p>'; return; }
-    T.b=b.data||[]; T.z=z.data||[]; T.v=v.data||[]; T.loaded=true;
+    T.b=(b.data||[]).sort((x,y)=>((x.route_order??1e6)-(y.route_order??1e6))||(x.id-y.id)); T.z=z.data||[]; T.v=v.data||[]; T.loaded=true;
+    T.num={}; T.b.forEach((x,i)=>T.num[x.id]=i+1);
     renderTerritory();
   }
   const tBump=()=>{ clearTimeout(tTimer); tTimer=setTimeout(loadTerritory,250); };
@@ -3195,16 +3221,13 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   function tRenderList(){
     const F=[['all','All'],['none','Not visited'],['callback','Callbacks'],['sold','Sold'],['mine','My turf']];
     let h='<div class="t-filters">'+F.map(([k,l])=>'<button type="button" class="t-chip" data-f="'+k+'" aria-pressed="'+(T.filter===k)+'">'+l+'</button>').join('')+'</div>';
-    let any=false;
-    T.z.forEach(z=>{
-      const list=T.b.filter(b=>b.zone===z.code).filter(b=>{ const o=tStatus(b.id);
-        if(T.filter==='none') return o==='none'; if(T.filter==='callback') return o==='callback';
-        if(T.filter==='sold') return tVisits(b.id).some(v=>v.outcome==='sold'); if(T.filter==='mine') return z.agent_id===state.meId; return true; });
-      if(!list.length) return; any=true;
-      h+='<h3 class="t-zh">'+tEsc(z.name)+'<span>'+(z.agent_id?tEsc(tName(z.agent_id)):'Open turf')+'</span></h3>';
-      list.forEach(b=>{ const v=tVisits(b.id), o=v.length?v[0].outcome:'none';
-        h+='<button type="button" class="t-row" data-id="'+b.id+'"><span class="t-pin s-'+o+'">'+b.id+'</span><span style="min-width:0"><div class="t-addr">'+tEsc(b.address)+'</div><div class="t-meta">'+(v.length?tEsc(tName(v[0].agent_id))+' · '+tAgo(v[0].created_at)+' · '+v.length+' visit'+(v.length>1?'s':''):'Bronx '+tEsc(b.zip))+'</div></span>'+tPill(o)+'</button>'; });
-    });
+    const list=T.b.filter(b=>{ const o=tStatus(b.id), z=tZone(b.zone);
+      if(T.filter==='none') return o==='none'; if(T.filter==='callback') return o==='callback';
+      if(T.filter==='sold') return tVisits(b.id).some(v=>v.outcome==='sold'); if(T.filter==='mine') return !!z&&z.agent_id===state.meId; return true; });
+    const any=list.length>0;
+    if(any) h+='<h3 class="t-zh">Route order<span>Start at 1 and work up</span></h3>';
+    list.forEach(b=>{ const v=tVisits(b.id), o=v.length?v[0].outcome:'none', z=tZone(b.zone);
+      h+='<button type="button" class="t-row" data-id="'+b.id+'"><span class="t-pin s-'+o+'">'+T.num[b.id]+'</span><span style="min-width:0"><div class="t-addr">'+tEsc(b.address)+'</div><div class="t-meta">'+(v.length?tEsc(tName(v[0].agent_id))+' · '+tAgo(v[0].created_at)+' · '+v.length+' visit'+(v.length>1?'s':''):tEsc(z?z.name:'Bronx '+b.zip)+(z&&z.agent_id?' · '+tEsc(tName(z.agent_id)):''))+'</div></span>'+tPill(o)+'</button>'; });
     if(!any) h+='<p class="empty">'+(T.filter==='mine'?'No turf is assigned to you yet. A manager can assign it on the Turf tab.':'No buildings match this filter.')+'</p>';
     const p=$('#tPanel'); p.innerHTML=h;
     p.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{ T.filter=b.dataset.f; tRenderList(); });
@@ -3222,6 +3245,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     h+='<div class="t-card"><h3>Agents on this promo</h3>'+(rows.length?'<div style="overflow-x:auto"><table class="t-table"><thead><tr><th>Agent</th><th class="n">Today</th><th class="n">Visits</th><th class="n">Bldgs</th><th class="n">Sold</th></tr></thead><tbody>'
       +rows.map(r=>'<tr><td>'+tEsc(tName(r.id))+'</td><td class="n">'+r.today+'</td><td class="n">'+r.all+'</td><td class="n">'+r.bld+'</td><td class="n">'+r.sold+'</td></tr>').join('')+'</tbody></table></div>':'<p class="t-meta" style="margin:0">No visits logged yet.</p>')+'</div>';
     h+='<div class="t-card"><h3>Team update</h3><p class="t-meta" style="margin:0 0 8px">Copies today\'s coverage as text you can paste into the chat.</p><button type="button" id="tCopy" class="btn btn-ghost btn-small">Copy update</button></div>';
+    if(mgr) h+='<div class="t-card"><h3>Route</h3><p class="t-meta" style="margin:0 0 8px">Buildings are numbered in the shortest order to visit them all. After adding or removing buildings, re-plan so the numbers stay in order.</p><button type="button" id="tReplan" class="btn btn-ghost btn-small">Re-plan route</button></div>';
     if(mgr) h+='<div class="t-card"><h3>Add a building</h3><p class="t-meta" style="margin:0 0 8px">Type the full street address. The map finds it and pins it.</p><div class="t-add"><input id="tNewAddr" placeholder="e.g. 1180 Grand Concourse" autocomplete="off" aria-label="Street address"><div class="two"><select id="tNewZone" aria-label="Area">'+T.z.map(z=>'<option value="'+z.code+'">'+tEsc(z.name)+'</option>').join('')+'</select><input id="tNewZip" inputmode="numeric" maxlength="5" placeholder="ZIP" aria-label="ZIP"></div><button type="button" id="tNewBtn" class="btn btn-primary btn-small">Find and add</button></div></div>';
     const p=$('#tPanel'); p.innerHTML=h;
     p.querySelectorAll('select[data-z]').forEach(s=>s.onchange=async()=>{
@@ -3230,7 +3254,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       z.agent_id=s.value||null; renderTerritory(); toast(s.value?z.name+' assigned to '+tName(s.value):z.name+' is open turf now'); });
     p.querySelectorAll('[data-show]').forEach(b=>b.onclick=()=>{ const l=T.b.filter(x=>x.zone===b.dataset.show); if(T.map&&l.length){ T.map.fitBounds(L.latLngBounds(l.map(x=>[x.lat,x.lng])),{padding:[40,40],maxZoom:17}); } $('#tMap').scrollIntoView({behavior:'smooth',block:'center'}); });
     $('#tCopy').onclick=()=>{ const t=tReport(); if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(()=>toast('Update copied'),()=>toast('Couldn\'t copy on this device')); else toast('Couldn\'t copy on this device'); };
-    if(mgr) $('#tNewBtn').onclick=tAddBuilding;
+    if(mgr){ $('#tNewBtn').onclick=tAddBuilding; $('#tReplan').onclick=tReplan; }
   }
   function tReport(){
     const d=new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
@@ -3240,6 +3264,13 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       const todo=l.filter(b=>tStatus(b.id)==='none').map(b=>b.address); if(todo.length) t+='\n  Still to hit: '+todo.join(', '); });
     const cb=T.b.filter(b=>tStatus(b.id)==='callback'); if(cb.length) t+='\n\nCallbacks: '+cb.map(b=>b.address).join(', ');
     return t;
+  }
+  async function tReplan(){
+    const btn=$('#tReplan'); btn.disabled=true; btn.textContent='Planning…';
+    const order=tRoute(T.b); const res=await Promise.all(order.map((idx,k)=>sb.from('territory_buildings').update({route_order:k+1}).eq('id',T.b[idx].id)));
+    btn.disabled=false; btn.textContent='Re-plan route';
+    if(res.some(r=>r.error)){ toast('Couldn\'t save the new route. Try again.'); return; }
+    toast('Route re-planned'); loadTerritory();
   }
   async function tAddBuilding(){
     const addr=$('#tNewAddr').value.trim(), zip=$('#tNewZip').value.trim(), zone=$('#tNewZone').value, btn=$('#tNewBtn');
@@ -3271,8 +3302,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   function tFitAll(){ if(T.map&&T.b.length) T.map.fitBounds(L.latLngBounds(T.b.map(b=>[b.lat,b.lng])),{padding:[30,30]}); }
   function tDrawMarkers(){
     if(!T.map) return; T.layer.clearLayers();
+    if(T.b.length>1) L.polyline(T.b.map(b=>[b.lat,b.lng]),{color:getComputedStyle(document.documentElement).getPropertyValue('--signal').trim()||'#0B7A84',weight:3,opacity:.7,dashArray:'6 8',interactive:false}).addTo(T.layer);
     T.b.forEach(b=>{ const st=tStatus(b.id), sel=T.sel===b.id;
-      L.marker([b.lat,b.lng],{title:b.address,zIndexOffset:sel?1000:0,icon:L.divIcon({className:'t-pin-wrap',html:'<span class="t-pin s-'+st+(sel?' sel':'')+'">'+b.id+'</span>',iconSize:[30,30],iconAnchor:[15,15]})})
+      L.marker([b.lat,b.lng],{title:b.address,zIndexOffset:sel?1000:0,icon:L.divIcon({className:'t-pin-wrap',html:'<span class="t-pin s-'+st+(sel?' sel':'')+'">'+T.num[b.id]+'</span>',iconSize:[30,30],iconAnchor:[15,15]})})
         .on('click',()=>tOpen(b.id)).addTo(T.layer); });
   }
   function tLocate(){
@@ -3304,7 +3336,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       :'<p class="t-meta" style="margin:0">No one has worked this building yet.</p>';
     sh.innerHTML='<div class="t-sheet" data-id="'+id+'">'
       +'<div class="sheet-head"><h2 id="sheetTitle">'+tEsc(b.address)+'</h2><button class="sheet-x" type="button" aria-label="Close" id="tX">×</button></div>'
-      +'<div class="t-meta">#'+b.id+' · '+tEsc(z?z.name:'')+' · Bronx, NY '+tEsc(b.zip)+'</div>'
+      +'<div class="t-meta">Stop '+T.num[b.id]+' of '+T.b.length+' · '+tEsc(z?z.name:'')+' · Bronx, NY '+tEsc(b.zip)+'</div>'
       +'<div class="t-facts"><div class="t-fact"><div class="k">Visits</div><div class="v">'+v.length+'</div></div><div class="t-fact"><div class="k">Sold</div><div class="v">'+sold+'</div></div><div class="t-fact"><div class="k">Turf</div><div class="v">'+tEsc(z&&z.agent_id?tName(z.agent_id):'Open')+'</div></div></div>'
       +'<div class="t-links"><a class="btn btn-ghost btn-small" href="https://maps.apple.com/?daddr='+dest+'" target="_blank" rel="noopener">Apple Maps</a><a class="btn btn-ghost btn-small" href="https://www.google.com/maps/dir/?api=1&destination='+dest+'" target="_blank" rel="noopener">Google Maps</a><button type="button" id="tShow" class="btn btn-ghost btn-small">Show on map</button></div>'
       +'<div class="t-sec">Log a visit</div>'

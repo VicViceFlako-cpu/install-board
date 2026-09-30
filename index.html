@@ -371,7 +371,7 @@ body.on-chat .wrap{padding-bottom:140px}
 .dup-note{margin-right:auto;font-size:.85rem;color:var(--signal);font-weight:600}
 .row-tools{align-items:center;gap:10px}
 
-.tabs{grid-template-columns:1fr 1fr 1fr}
+.tabs{grid-template-columns:repeat(4,1fr)}
 .cal-head{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;margin-bottom:10px}
 .cal-head h2{margin:0;text-align:center;font:700 1.6rem/1 "Barlow Condensed","Arial Narrow",sans-serif}
 .cal-tools{display:flex;gap:10px;margin-bottom:12px}
@@ -437,6 +437,7 @@ body.on-chat .wrap{padding-bottom:140px}
 .t-map{height:min(62vh,520px);background:var(--surface)}
 .t-mapbtns{position:absolute;right:10px;bottom:24px;z-index:500;display:flex;gap:6px}
 .t-mapbtns .btn{box-shadow:0 2px 8px rgba(0,0,0,.18)}
+.t-map.t-dark .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.9) contrast(.9)}
 .t-pin-wrap{background:none;border:0}
 .t-pin{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font:700 .85rem/1 Barlow,sans-serif;color:#fff;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.35);font-variant-numeric:tabular-nums}
 .t-pin.s-none{background:var(--surface);color:var(--ink);border:3px solid var(--t-none)}
@@ -3256,8 +3257,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
   // map
   function tDark(){ const t=document.documentElement.getAttribute('data-theme'); return t?t==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches; }
-  function tSetTiles(){ if(!T.map) return; if(T.tiles) T.map.removeLayer(T.tiles);
-    T.tiles=L.tileLayer('https://{s}.basemaps.cartocdn.com/'+(tDark()?'dark_all':'light_all')+'/{z}/{x}/{y}{r}.png',{maxZoom:20,subdomains:'abcd',attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'}).addTo(T.map); }
+  function tSetTiles(){ if(!T.map) return;
+    $('#tMap').classList.toggle('t-dark',tDark());
+    if(!T.tiles) T.tiles=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(T.map); }
   function tInitMap(){
     if(T.map) return true;
     if(!window.L){ $('#tMap').innerHTML='<p class="status" style="margin:12px">The map couldn\'t load. Check your connection, then reload.</p>'; return false; }

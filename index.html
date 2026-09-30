@@ -3221,13 +3221,16 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   function tRenderList(){
     const F=[['all','All'],['none','Not visited'],['callback','Callbacks'],['sold','Sold'],['mine','My turf']];
     let h='<div class="t-filters">'+F.map(([k,l])=>'<button type="button" class="t-chip" data-f="'+k+'" aria-pressed="'+(T.filter===k)+'">'+l+'</button>').join('')+'</div>';
-    const list=T.b.filter(b=>{ const o=tStatus(b.id), z=tZone(b.zone);
-      if(T.filter==='none') return o==='none'; if(T.filter==='callback') return o==='callback';
-      if(T.filter==='sold') return tVisits(b.id).some(v=>v.outcome==='sold'); if(T.filter==='mine') return !!z&&z.agent_id===state.meId; return true; });
-    const any=list.length>0;
-    if(any) h+='<h3 class="t-zh">Route order<span>Start at 1 and work up</span></h3>';
-    list.forEach(b=>{ const v=tVisits(b.id), o=v.length?v[0].outcome:'none', z=tZone(b.zone);
-      h+='<button type="button" class="t-row" data-id="'+b.id+'"><span class="t-pin s-'+o+'">'+T.num[b.id]+'</span><span style="min-width:0"><div class="t-addr">'+tEsc(b.address)+'</div><div class="t-meta">'+(v.length?tEsc(tName(v[0].agent_id))+' · '+tAgo(v[0].created_at)+' · '+v.length+' visit'+(v.length>1?'s':''):tEsc(z?z.name:'Bronx '+b.zip)+(z&&z.agent_id?' · '+tEsc(tName(z.agent_id)):''))+'</div></span>'+tPill(o)+'</button>'; });
+    let any=false;
+    T.z.forEach(z=>{
+      const list=T.b.filter(b=>b.zone===z.code).filter(b=>{ const o=tStatus(b.id);
+        if(T.filter==='none') return o==='none'; if(T.filter==='callback') return o==='callback';
+        if(T.filter==='sold') return tVisits(b.id).some(v=>v.outcome==='sold'); if(T.filter==='mine') return z.agent_id===state.meId; return true; });
+      if(!list.length) return; any=true;
+      h+='<h3 class="t-zh">'+tEsc(z.name)+'<span>'+(z.agent_id?tEsc(tName(z.agent_id)):'Open turf')+'</span></h3>';
+      list.forEach(b=>{ const v=tVisits(b.id), o=v.length?v[0].outcome:'none';
+        h+='<button type="button" class="t-row" data-id="'+b.id+'"><span class="t-pin s-'+o+'">'+T.num[b.id]+'</span><span style="min-width:0"><div class="t-addr">'+tEsc(b.address)+'</div><div class="t-meta">'+(v.length?tEsc(tName(v[0].agent_id))+' · '+tAgo(v[0].created_at)+' · '+v.length+' visit'+(v.length>1?'s':''):'Bronx '+tEsc(b.zip))+'</div></span>'+tPill(o)+'</button>'; });
+    });
     if(!any) h+='<p class="empty">'+(T.filter==='mine'?'No turf is assigned to you yet. A manager can assign it on the Turf tab.':'No buildings match this filter.')+'</p>';
     const p=$('#tPanel'); p.innerHTML=h;
     p.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{ T.filter=b.dataset.f; tRenderList(); });

@@ -3270,7 +3270,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   }
   async function tReplan(){
     const btn=$('#tReplan'); btn.disabled=true; btn.textContent='Planning…';
-    const order=tRoute(T.b); const res=await Promise.all(order.map((idx,k)=>sb.from('territory_buildings').update({route_order:k+1}).eq('id',T.b[idx].id)));
+    let order=tRoute(T.b); if(order.length>1&&(T.b[order[order.length-1]].route_order??1e6)<(T.b[order[0]].route_order??1e6)) order=order.reverse(); const res=await Promise.all(order.map((idx,k)=>sb.from('territory_buildings').update({route_order:k+1}).eq('id',T.b[idx].id)));
     btn.disabled=false; btn.textContent='Re-plan route';
     if(res.some(r=>r.error)){ toast('Couldn\'t save the new route. Try again.'); return; }
     toast('Route re-planned'); loadTerritory();

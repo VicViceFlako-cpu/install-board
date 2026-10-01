@@ -13,6 +13,8 @@
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" href="icon.png">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
@@ -369,7 +371,8 @@ body.on-chat .wrap{padding-bottom:140px}
 .dup-note{margin-right:auto;font-size:.85rem;color:var(--signal);font-weight:600}
 .row-tools{align-items:center;gap:10px}
 
-.tabs{grid-template-columns:1fr 1fr 1fr}
+.tabs{grid-template-columns:repeat(4,1fr)}
+#tabMap{grid-column:span 2}
 .cal-head{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;margin-bottom:10px}
 .cal-head h2{margin:0;text-align:center;font:700 1.6rem/1 "Barlow Condensed","Arial Narrow",sans-serif}
 .cal-tools{display:flex;gap:10px;margin-bottom:12px}
@@ -421,6 +424,76 @@ body.on-chat .wrap{padding-bottom:140px}
 [hidden]{display:none!important}
 
 @media (prefers-reduced-motion:reduce){.toast{transition:none}}
+/* territory map */
+:root{--t-none:#8B93A3;--t-noanswer:#C98A0E;--t-notint:#B3434A;--t-callback:#2A78C8;--t-sold:#1C9254;--t-noaccess:#7656BE}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--t-none:#7D869B;--t-noanswer:#E3A52B;--t-notint:#E0666C;--t-callback:#5AA4EF;--t-sold:#3CC47D;--t-noaccess:#A386EC}}
+:root[data-theme="dark"]{--t-none:#7D869B;--t-noanswer:#E3A52B;--t-notint:#E0666C;--t-callback:#5AA4EF;--t-sold:#3CC47D;--t-noaccess:#A386EC}
+.t-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}
+@media (max-width:520px){.t-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.t-stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:9px 12px;min-width:0}
+.t-stat .k{font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.t-stat .v{font:700 1.7rem/1.05 "Barlow Condensed","Arial Narrow",sans-serif;font-variant-numeric:tabular-nums}
+.t-stat .v small{font-size:1rem;color:var(--muted)}
+.t-mapwrap{position:relative;border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:8px;isolation:isolate}
+.t-map{height:min(62vh,520px);background:var(--surface)}
+.t-mapbtns{position:absolute;right:10px;bottom:24px;z-index:500;display:flex;gap:6px}
+.t-mapbtns .btn{box-shadow:0 2px 8px rgba(0,0,0,.18)}
+.t-map.t-dark .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.9) contrast(.9)}
+.t-pin-wrap{background:none;border:0}
+.t-pin{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font:700 .85rem/1 Barlow,sans-serif;color:#fff;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.35);font-variant-numeric:tabular-nums}
+.t-pin.s-none{background:var(--surface);color:var(--ink);border:3px solid var(--t-none)}
+.t-pin.s-noanswer{background:var(--t-noanswer)}.t-pin.s-notint{background:var(--t-notint)}.t-pin.s-callback{background:var(--t-callback)}.t-pin.s-sold{background:var(--t-sold)}.t-pin.s-noaccess{background:var(--t-noaccess)}
+.t-pin.sel{outline:3px solid var(--signal);outline-offset:2px}
+.t-me{width:16px;height:16px;border-radius:50%;background:#1E7BF2;border:3px solid #fff;box-shadow:0 0 0 6px rgba(30,123,242,.25)}
+.t-legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:.8rem;color:var(--muted);margin:0 0 14px}
+.t-dot{width:11px;height:11px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:-1px;flex:none}
+.t-dot.s-none{border:2px solid var(--t-none)}
+.t-dot.s-noanswer{background:var(--t-noanswer)}.t-dot.s-notint{background:var(--t-notint)}.t-dot.s-callback{background:var(--t-callback)}.t-dot.s-sold{background:var(--t-sold)}.t-dot.s-noaccess{background:var(--t-noaccess)}
+.t-seg{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px;margin-bottom:12px}
+.t-seg button{flex:1;border:0;background:none;border-radius:9px;min-height:40px;font-weight:600;color:var(--muted)}
+.t-seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.t-filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px}
+.t-chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-size:.88rem;font-weight:500}
+.t-chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.t-zh{font:700 1.05rem/1 "Barlow Condensed","Arial Narrow",sans-serif;margin:18px 0 8px;display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.t-zh span{font:500 .88rem Barlow,sans-serif;color:var(--muted)}
+.t-row{display:grid;grid-template-columns:32px minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.t-row .t-pin{box-shadow:none}
+.t-addr{font-weight:600}
+.t-meta{color:var(--muted);font-size:.88rem}
+.t-pill{font-size:.76rem;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
+.t-zone{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;display:grid;gap:8px}
+.t-zone-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.t-bar{height:7px;background:var(--line);border-radius:7px;overflow:hidden}
+.t-bar i{display:block;height:100%;background:var(--signal);border-radius:7px}
+.t-zone-ctl{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.t-zone-ctl select,.t-add select,.t-add input{flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-height:40px}
+.t-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+.t-card h3{font:700 1.15rem/1.1 "Barlow Condensed","Arial Narrow",sans-serif;margin:0 0 8px}
+.t-table{width:100%;border-collapse:collapse;font-size:.92rem;font-variant-numeric:tabular-nums}
+.t-table th,.t-table td{text-align:left;padding:7px 4px;border-top:1px solid var(--line)}
+.t-table th{font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600;border-top:0}
+.t-table .n{text-align:right}
+.t-add{display:grid;gap:8px}
+.t-add .two{display:grid;grid-template-columns:1fr 110px;gap:8px}
+.t-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0}
+.t-fact{background:var(--bg);border-radius:10px;padding:8px 10px;min-width:0}
+.t-fact .k{font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.t-fact .v{font-weight:600;overflow-wrap:anywhere}
+.t-links{display:flex;gap:8px;flex-wrap:wrap}
+.t-links a{text-decoration:none;display:inline-flex;align-items:center;color:var(--ink)}
+.t-sec{font-size:.76rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600;margin:18px 0 8px}
+.t-oc-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.t-oc{border:2px solid var(--line);background:var(--surface);border-radius:10px;min-height:48px;font-weight:600;text-align:left;padding:8px 10px;display:flex;align-items:center;gap:6px}
+.t-oc[aria-pressed="true"]{border-color:var(--ink);background:var(--bg)}
+.t-form{display:grid;gap:8px;margin-top:10px}
+.t-form label{display:grid;gap:3px;font-size:.85rem;color:var(--muted)}
+.t-form input,.t-form select{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;min-height:44px;width:100%;color:var(--ink)}
+.t-h{display:grid;grid-template-columns:12px minmax(0,1fr) auto;gap:10px;padding:9px 0;border-top:1px solid var(--line);align-items:start}
+.t-h:first-child{border-top:0}
+.t-h .t-dot{margin-top:6px}
+.t-gps{font-size:.8rem;color:var(--muted)}
+.t-gps.ok{color:var(--done)}
 </style>
 </head>
 <body>
@@ -454,6 +527,7 @@ body.on-chat .wrap{padding-bottom:140px}
     <button class="tab" role="tab" id="tabWireless" aria-selected="false">Wireless</button>
     <button class="tab" role="tab" id="tabChat" aria-selected="false">Chat<span id="unread" class="badge" hidden></span></button>
     <button class="tab" role="tab" id="tabLeaders" aria-selected="false">Leaders</button>
+    <button class="tab" role="tab" id="tabMap" aria-selected="false">2 months free map</button>
     <a class="tab tab-link" id="tabPortal" href="https://www22.verizon.com/CoFEE/Content/PreOrderingD2D/SSOLogin/Login.aspx" target="_blank" rel="noopener">Optix ↗</a>
   </nav>
 
@@ -610,6 +684,16 @@ body.on-chat .wrap{padding-bottom:140px}
       <p class="note">Deactivating someone blocks sign-in but keeps all their orders credited to them.</p>
       <div id="teamList"></div>
     </section>
+  </div>
+
+  <div id="viewMap" hidden>
+    <div id="tStats" class="t-stats"></div>
+    <div class="t-mapwrap"><div id="tMap" class="t-map" aria-label="Map of promo buildings"></div>
+      <div class="t-mapbtns"><button type="button" id="tMe" class="btn btn-ghost btn-small">📍 Near me</button><button type="button" id="tAll" class="btn btn-ghost btn-small">Show all</button></div>
+    </div>
+    <div id="tLegend" class="t-legend"></div>
+    <div class="t-seg" id="tSeg" role="group" aria-label="Show"><button type="button" data-v="list" aria-pressed="true">Buildings</button><button type="button" data-v="turf" aria-pressed="false">Turf &amp; agents</button></div>
+    <div id="tPanel"><p class="status">Loading the territory…</p></div>
   </div>
 
   <div id="viewChat" hidden>
@@ -1459,12 +1543,13 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   }
   function showTab(t){
     state.tab=t;
-    $('#tabInstalls').setAttribute('aria-selected',t==='installs'); $('#tabChat').setAttribute('aria-selected',t==='chat'); $('#tabCal').setAttribute('aria-selected',t==='calendar'); $('#tabWireless').setAttribute('aria-selected',t==='wireless'); $('#tabLeaders').setAttribute('aria-selected',t==='leaders');
+    $('#tabInstalls').setAttribute('aria-selected',t==='installs'); $('#tabChat').setAttribute('aria-selected',t==='chat'); $('#tabCal').setAttribute('aria-selected',t==='calendar'); $('#tabWireless').setAttribute('aria-selected',t==='wireless'); $('#tabLeaders').setAttribute('aria-selected',t==='leaders'); $('#tabMap').setAttribute('aria-selected',t==='map'); $('#viewMap').hidden=t!=='map';
     $('#viewInstalls').hidden=t!=='installs'; $('#viewChat').hidden=t!=='chat'; $('#viewCal').hidden=t!=='calendar'; $('#viewTeam').hidden=t!=='team'; $('#viewWireless').hidden=t!=='wireless';
     if(t==='wireless') renderWireless(); $('#viewLeaders').hidden=t!=='leaders';
     if(t==='leaders') renderLeaders();
     if(t==='team'){ loadTeam(); loadSettings(); loadPayHistory(); loadDevices(); loadReportNames(); }
     if(t==='calendar') renderCal();
+    if(t==='map') showTerritory();
     $('#composer').hidden=t!=='chat'; document.body.classList.toggle('on-chat',t==='chat');
     if(t==='chat'){ renderChat(); markSeen(); requestAnimationFrame(()=>window.scrollTo(0,document.body.scrollHeight)); }
     else updateBadge();
@@ -1475,6 +1560,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   $('#tabWireless').onclick=()=>showTab('wireless');
   $('#teamBtn').onclick=()=>showTab('team');
   $('#tabLeaders').onclick=()=>showTab('leaders');
+  $('#tabMap').onclick=()=>showTab('map');
 
   // ---------- calendar ----------
   function calInstalls(){
@@ -3076,6 +3162,256 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     }
   };
 
+  // ---------- territory map ----------
+  const T_OUT={noanswer:'No answer',notint:'Not interested',callback:'Callback',sold:'Sold',noaccess:"Couldn't get in"};
+  const T={b:[],z:[],v:[],num:{},line:null,map:null,layer:null,me:null,tiles:null,view:'list',filter:'all',sel:null,oc:null,loaded:false};
+  const tEsc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const tIsToday=t=>new Date(t).toDateString()===new Date().toDateString();
+  function tAgo(t){ const m=Math.round((Date.now()-new Date(t))/60000); if(m<1) return 'just now'; if(m<60) return m+'m ago'; const h=Math.round(m/60); if(h<24) return h+'h ago'; return Math.round(h/24)+'d ago'; }
+  const tVisits=id=>T.v.filter(v=>v.building_id===id);
+  const tStatus=id=>{ const v=tVisits(id); return v.length?v[0].outcome:'none'; };
+  const tZone=code=>T.z.find(z=>z.code===code);
+  function tDist(a,b,c,d){ const R=6371000,r=x=>x*Math.PI/180,dl=r(c-a),dn=r(d-b); const h=Math.sin(dl/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(dn/2)**2; return 2*R*Math.asin(Math.sqrt(h)); }
+  const tFmtDist=m=>m<1000?Math.round(m/10)*10+' m':(m/1609.34).toFixed(1)+' mi';
+  function tAgentOpts(sel){ return Object.values(state.profiles||{}).filter(p=>p.full_name).sort((a,b)=>a.full_name.localeCompare(b.full_name)).map(p=>'<option value="'+p.id+'"'+(p.id===sel?' selected':'')+'>'+tEsc(p.full_name)+'</option>').join(''); }
+  const tName=id=>personName(id).replace(/ \(you\)$/,'');
+
+  // open-path route: best of nearest-neighbour from every start, improved with 2-opt + or-opt
+  function tRoute(pts){
+    const n=pts.length; if(n<3) return pts.map((_,i)=>i);
+    const R=6371000,r=x=>x*Math.PI/180;
+    const D=pts.map(a=>pts.map(b=>{const dl=r(b.lat-a.lat),dn=r(b.lng-a.lng);const h=Math.sin(dl/2)**2+Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h));}));
+    const len=p=>{let s=0;for(let i=1;i<p.length;i++)s+=D[p[i-1]][p[i]];return s;};
+    function improve(p){ let better=true;
+      while(better){ better=false;
+        for(let i=0;i<n-1;i++) for(let k=i+1;k<n;k++){ // 2-opt on open path (reverse p[i..k])
+          const a=i>0?p[i-1]:-1, b=p[i], c=p[k], d=k<n-1?p[k+1]:-1;
+          const before=(a<0?0:D[a][b])+(d<0?0:D[c][d]), after=(a<0?0:D[a][c])+(d<0?0:D[b][d]);
+          if(after+1e-6<before){ p.splice(i,k-i+1,...p.slice(i,k+1).reverse()); better=true; } }
+        for(let s=1;s<=3;s++) for(let i=0;i+s<=n;i++){ // or-opt: move segment of length s
+          const seg=p.slice(i,i+s), rest=p.slice(0,i).concat(p.slice(i+s)); const base=len(p);
+          for(let j=0;j<=rest.length;j++){ if(j===i) continue;
+            for(const sg of [seg,seg.slice().reverse()]){ const q=rest.slice(0,j).concat(sg,rest.slice(j)); if(len(q)+1e-6<base){ p.splice(0,n,...q); better=true; break; } }
+            if(better) break; }
+          if(better) break; }
+      } return p; }
+    let best=null,bl=Infinity;
+    for(let s=0;s<n;s++){ const used=new Set([s]),p=[s];
+      while(p.length<n){ const l=p[p.length-1]; let m=-1,md=Infinity; for(let j=0;j<n;j++) if(!used.has(j)&&D[l][j]<md){md=D[l][j];m=j;} p.push(m);used.add(m); }
+      improve(p); const L=len(p); if(L<bl){bl=L;best=p.slice();} }
+    return best;
+  }
+  let tTok=0, tTimer=null;
+  async function loadTerritory(){
+    const tok=++tTok;
+    const [b,z,v]=await Promise.all([
+      sb.from('territory_buildings').select('*').eq('active',true).order('id'),
+      sb.from('territory_zones').select('*').order('sort'),
+      sb.from('territory_visits').select('*').order('created_at',{ascending:false}).limit(5000)
+    ]);
+    if(tok!==tTok) return;
+    if(b.error||z.error||v.error){ if(!T.loaded) $('#tPanel').innerHTML='<p class="status error">Couldn\'t load the territory. Check your connection, then reload.</p>'; return; }
+    T.b=(b.data||[]).sort((x,y)=>((x.route_order??1e6)-(y.route_order??1e6))||(x.id-y.id)); T.z=z.data||[]; T.v=v.data||[]; T.loaded=true;
+    T.num={}; T.b.forEach((x,i)=>T.num[x.id]=i+1);
+    renderTerritory();
+  }
+  const tBump=()=>{ clearTimeout(tTimer); tTimer=setTimeout(loadTerritory,250); };
+  function startTerritory(){
+    loadTerritory();
+    sb.channel('rt-territory')
+      .on('postgres_changes',{event:'*',schema:'public',table:'territory_visits'},tBump)
+      .on('postgres_changes',{event:'*',schema:'public',table:'territory_zones'},tBump)
+      .on('postgres_changes',{event:'*',schema:'public',table:'territory_buildings'},tBump)
+      .subscribe();
+    document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') tBump(); });
+  }
+
+  function renderTerritory(){
+    if(!T.loaded) return;
+    tRenderStats(); tDrawMarkers();
+    if(T.map&&!T.fitted&&T.b.length&&state.tab==='map'){ tFitAll(); T.fitted=true; }
+    if(T.view==='list') tRenderList(); else tRenderTurf();
+    const sh=$('#sheet .sheet .t-sheet');
+    if(sh&&!$('#sheet').hidden) tOpen(+sh.dataset.id,true);
+  }
+  function tRenderStats(){
+    const worked=T.b.filter(b=>tStatus(b.id)!=='none').length;
+    const today=T.v.filter(v=>tIsToday(v.created_at)).length;
+    const sold=T.v.filter(v=>v.outcome==='sold').length;
+    const cb=T.b.filter(b=>tStatus(b.id)==='callback').length;
+    $('#tStats').innerHTML=[['Buildings worked',worked+'<small> / '+T.b.length+'</small>'],['Visits today',today],['Sales logged',sold],['Open callbacks',cb]]
+      .map(([k,v])=>'<div class="t-stat"><div class="k">'+k+'</div><div class="v">'+v+'</div></div>').join('');
+    $('#tLegend').innerHTML='<span><i class="t-dot s-none"></i>Not visited</span>'+Object.entries(T_OUT).map(([k,l])=>'<span><i class="t-dot s-'+k+'"></i>'+l+'</span>').join('');
+  }
+  function tPill(o){ return o==='none'?'<span class="t-pill" style="color:var(--t-none)">Not visited</span>':'<span class="t-pill" style="color:var(--t-'+o+')">'+T_OUT[o]+'</span>'; }
+  function tRenderList(){
+    const F=[['all','All'],['none','Not visited'],['callback','Callbacks'],['sold','Sold'],['mine','My turf']];
+    let h='<div class="t-filters">'+F.map(([k,l])=>'<button type="button" class="t-chip" data-f="'+k+'" aria-pressed="'+(T.filter===k)+'">'+l+'</button>').join('')+'</div>';
+    let any=false;
+    T.z.forEach(z=>{
+      const list=T.b.filter(b=>b.zone===z.code).filter(b=>{ const o=tStatus(b.id);
+        if(T.filter==='none') return o==='none'; if(T.filter==='callback') return o==='callback';
+        if(T.filter==='sold') return tVisits(b.id).some(v=>v.outcome==='sold'); if(T.filter==='mine') return z.agent_id===state.meId; return true; });
+      if(!list.length) return; any=true;
+      h+='<h3 class="t-zh">'+tEsc(z.name)+'<span>'+(z.agent_id?tEsc(tName(z.agent_id)):'Open turf')+'</span></h3>';
+      list.forEach(b=>{ const v=tVisits(b.id), o=v.length?v[0].outcome:'none';
+        h+='<button type="button" class="t-row" data-id="'+b.id+'"><span class="t-pin s-'+o+'">'+T.num[b.id]+'</span><span style="min-width:0"><div class="t-addr">'+tEsc(b.address)+'</div><div class="t-meta">'+(v.length?tEsc(tName(v[0].agent_id))+' · '+tAgo(v[0].created_at)+' · '+v.length+' visit'+(v.length>1?'s':''):'Bronx '+tEsc(b.zip))+'</div></span>'+tPill(o)+'</button>'; });
+    });
+    if(!any) h+='<p class="empty">'+(T.filter==='mine'?'No turf is assigned to you yet. A manager can assign it on the Turf tab.':'No buildings match this filter.')+'</p>';
+    const p=$('#tPanel'); p.innerHTML=h;
+    p.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{ T.filter=b.dataset.f; tRenderList(); });
+    p.querySelectorAll('.t-row').forEach(b=>b.onclick=()=>tOpen(+b.dataset.id));
+  }
+  function tRenderTurf(){
+    const mgr=state.canAnnounce;
+    let h='';
+    T.z.forEach(z=>{ const l=T.b.filter(b=>b.zone===z.code), done=l.filter(b=>tStatus(b.id)!=='none').length;
+      h+='<div class="t-zone"><div class="t-zone-top"><b>'+tEsc(z.name)+'</b><span class="t-meta">'+done+' of '+l.length+' worked</span></div><div class="t-bar"><i style="width:'+(l.length?done/l.length*100:0)+'%"></i></div><div class="t-zone-ctl">'
+        +(mgr?'<select data-z="'+z.code+'" aria-label="Assign '+tEsc(z.name)+'"><option value="">Unassigned</option>'+tAgentOpts(z.agent_id)+'</select>':'<span class="t-meta" style="flex:1">'+(z.agent_id?'Assigned to '+tEsc(tName(z.agent_id)):'Open turf')+'</span>')
+        +'<button type="button" class="btn btn-ghost btn-small" data-show="'+z.code+'">Show on map</button></div></div>'; });
+    const ids=[...new Set([...T.v.map(v=>v.agent_id),...T.z.map(z=>z.agent_id)].filter(Boolean))];
+    const rows=ids.map(id=>{ const m=T.v.filter(v=>v.agent_id===id); return {id,today:m.filter(v=>tIsToday(v.created_at)).length,all:m.length,bld:new Set(m.map(v=>v.building_id)).size,sold:m.filter(v=>v.outcome==='sold').length}; }).sort((a,b)=>b.all-a.all);
+    h+='<div class="t-card"><h3>Agents on this promo</h3>'+(rows.length?'<div style="overflow-x:auto"><table class="t-table"><thead><tr><th>Agent</th><th class="n">Today</th><th class="n">Visits</th><th class="n">Bldgs</th><th class="n">Sold</th></tr></thead><tbody>'
+      +rows.map(r=>'<tr><td>'+tEsc(tName(r.id))+'</td><td class="n">'+r.today+'</td><td class="n">'+r.all+'</td><td class="n">'+r.bld+'</td><td class="n">'+r.sold+'</td></tr>').join('')+'</tbody></table></div>':'<p class="t-meta" style="margin:0">No visits logged yet.</p>')+'</div>';
+    h+='<div class="t-card"><h3>Team update</h3><p class="t-meta" style="margin:0 0 8px">Copies today\'s coverage as text you can paste into the chat.</p><button type="button" id="tCopy" class="btn btn-ghost btn-small">Copy update</button></div>';
+    if(mgr) h+='<div class="t-card"><h3>Route</h3><p class="t-meta" style="margin:0 0 8px">Buildings are numbered in the shortest order to visit them all. After adding or removing buildings, re-plan so the numbers stay in order.</p><button type="button" id="tReplan" class="btn btn-ghost btn-small">Re-plan route</button></div>';
+    if(mgr) h+='<div class="t-card"><h3>Add a building</h3><p class="t-meta" style="margin:0 0 8px">Type the full street address. The map finds it and pins it.</p><div class="t-add"><input id="tNewAddr" placeholder="e.g. 1180 Grand Concourse" autocomplete="off" aria-label="Street address"><div class="two"><select id="tNewZone" aria-label="Area">'+T.z.map(z=>'<option value="'+z.code+'">'+tEsc(z.name)+'</option>').join('')+'</select><input id="tNewZip" inputmode="numeric" maxlength="5" placeholder="ZIP" aria-label="ZIP"></div><button type="button" id="tNewBtn" class="btn btn-primary btn-small">Find and add</button></div></div>';
+    const p=$('#tPanel'); p.innerHTML=h;
+    p.querySelectorAll('select[data-z]').forEach(s=>s.onchange=async()=>{
+      const z=tZone(s.dataset.z); const {error}=await sb.from('territory_zones').update({agent_id:s.value||null,updated_at:new Date().toISOString()}).eq('code',s.dataset.z);
+      if(error){ toast('Couldn\'t save that. Try again.'); tRenderTurf(); return; }
+      z.agent_id=s.value||null; renderTerritory(); toast(s.value?z.name+' assigned to '+tName(s.value):z.name+' is open turf now'); });
+    p.querySelectorAll('[data-show]').forEach(b=>b.onclick=()=>{ const l=T.b.filter(x=>x.zone===b.dataset.show); if(T.map&&l.length){ T.map.fitBounds(L.latLngBounds(l.map(x=>[x.lat,x.lng])),{padding:[40,40],maxZoom:17}); } $('#tMap').scrollIntoView({behavior:'smooth',block:'center'}); });
+    $('#tCopy').onclick=()=>{ const t=tReport(); if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(()=>toast('Update copied'),()=>toast('Couldn\'t copy on this device')); else toast('Couldn\'t copy on this device'); };
+    if(mgr){ $('#tNewBtn').onclick=tAddBuilding; $('#tReplan').onclick=tReplan; }
+  }
+  function tReport(){
+    const d=new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    const worked=T.b.filter(b=>tStatus(b.id)!=='none').length, today=T.v.filter(v=>tIsToday(v.created_at));
+    let t='Promo buildings — '+d+'\nWorked '+worked+'/'+T.b.length+' · '+today.length+' visits today · '+today.filter(v=>v.outcome==='sold').length+' sold today\n';
+    T.z.forEach(z=>{ const l=T.b.filter(b=>b.zone===z.code); if(!l.length) return; t+='\n'+z.name+(z.agent_id?' ('+tName(z.agent_id)+')':'')+': '+l.filter(b=>tStatus(b.id)!=='none').length+'/'+l.length;
+      const todo=l.filter(b=>tStatus(b.id)==='none').map(b=>b.address); if(todo.length) t+='\n  Still to hit: '+todo.join(', '); });
+    const cb=T.b.filter(b=>tStatus(b.id)==='callback'); if(cb.length) t+='\n\nCallbacks: '+cb.map(b=>b.address).join(', ');
+    return t;
+  }
+  async function tReplan(){
+    const btn=$('#tReplan'); btn.disabled=true; btn.textContent='Planning…';
+    let order=tRoute(T.b); if(order.length>1&&(T.b[order[order.length-1]].route_order??1e6)<(T.b[order[0]].route_order??1e6)) order=order.reverse(); const res=await Promise.all(order.map((idx,k)=>sb.from('territory_buildings').update({route_order:k+1}).eq('id',T.b[idx].id)));
+    btn.disabled=false; btn.textContent='Re-plan route';
+    if(res.some(r=>r.error)){ toast('Couldn\'t save the new route. Try again.'); return; }
+    toast('Route re-planned'); loadTerritory();
+  }
+  async function tAddBuilding(){
+    const addr=$('#tNewAddr').value.trim(), zip=$('#tNewZip').value.trim(), zone=$('#tNewZone').value, btn=$('#tNewBtn');
+    if(!addr||!/^\d{5}$/.test(zip)){ toast('Enter the street address and a 5-digit ZIP.'); return; }
+    btn.disabled=true; btn.textContent='Finding…';
+    try{
+      const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=us&q='+encodeURIComponent(addr+', NY '+zip));
+      const j=await r.json(); const hit=j&&j[0];
+      if(!hit){ toast('Couldn\'t find that address. Check the spelling, e.g. "Ave" or "St".'); return; }
+      const {error}=await sb.from('territory_buildings').insert({address:addr,zip,lat:+hit.lat,lng:+hit.lon,zone});
+      if(error){ toast(/duplicate/i.test(error.message)?'That building is already on the list.':'Couldn\'t add it. Try again.'); return; }
+      toast(addr+' added to the map'); $('#tNewAddr').value=''; $('#tNewZip').value=''; loadTerritory();
+    }catch(_){ toast('Couldn\'t reach the map service. Try again.'); }
+    finally{ btn.disabled=false; btn.textContent='Find and add'; }
+  }
+
+  // map
+  function tDark(){ const t=document.documentElement.getAttribute('data-theme'); return t?t==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches; }
+  function tSetTiles(){ if(!T.map) return;
+    $('#tMap').classList.toggle('t-dark',tDark());
+    if(!T.tiles) T.tiles=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(T.map); }
+  function tInitMap(){
+    if(T.map) return true;
+    if(!window.L){ $('#tMap').innerHTML='<p class="status" style="margin:12px">The map couldn\'t load. Check your connection, then reload.</p>'; return false; }
+    T.map=L.map('tMap',{zoomControl:true}).setView([40.853,-73.9],13);
+    tSetTiles(); const mq=window.matchMedia('(prefers-color-scheme: dark)'); if(mq.addEventListener) mq.addEventListener('change',tSetTiles);
+    T.layer=L.layerGroup().addTo(T.map); tDrawMarkers(); return true;
+  }
+  function tFitAll(){ if(T.map&&T.b.length) T.map.fitBounds(L.latLngBounds(T.b.map(b=>[b.lat,b.lng])),{padding:[30,30]}); }
+  function tDrawMarkers(){
+    if(!T.map) return; T.layer.clearLayers();
+    if(T.b.length>1) L.polyline(T.b.map(b=>[b.lat,b.lng]),{color:getComputedStyle(document.documentElement).getPropertyValue('--signal').trim()||'#0B7A84',weight:3,opacity:.7,dashArray:'6 8',interactive:false}).addTo(T.layer);
+    T.b.forEach(b=>{ const st=tStatus(b.id), sel=T.sel===b.id;
+      L.marker([b.lat,b.lng],{title:b.address,zIndexOffset:sel?1000:0,icon:L.divIcon({className:'t-pin-wrap',html:'<span class="t-pin s-'+st+(sel?' sel':'')+'">'+T.num[b.id]+'</span>',iconSize:[30,30],iconAnchor:[15,15]})})
+        .on('click',()=>tOpen(b.id)).addTo(T.layer); });
+  }
+  function tLocate(){
+    if(!navigator.geolocation){ toast('Location isn\'t available on this device.'); return; }
+    toast('Finding you…');
+    navigator.geolocation.getCurrentPosition(p=>{ const ll=[p.coords.latitude,p.coords.longitude];
+      if(T.me) T.me.setLatLng(ll); else T.me=L.marker(ll,{interactive:false,zIndexOffset:2000,icon:L.divIcon({className:'t-pin-wrap',html:'<span class="t-me"></span>',iconSize:[16,16],iconAnchor:[8,8]})}).addTo(T.map);
+      T.map.setView(ll,16);
+      const open=T.b.filter(b=>tStatus(b.id)==='none').map(b=>({b,d:tDist(ll[0],ll[1],b.lat,b.lng)})).sort((a,b)=>a.d-b.d)[0];
+      toast(open?'Closest unvisited: '+open.b.address+' ('+tFmtDist(open.d)+')':'Every building has been visited');
+    },()=>toast('Turn on location for Install Board to see where you are.'),{enableHighAccuracy:true,timeout:10000,maximumAge:30000});
+  }
+  function tGps(){ return new Promise(res=>{ if(!navigator.geolocation) return res(null); let done=false; const fin=v=>{ if(!done){ done=true; res(v); } };
+    setTimeout(()=>fin(null),6000); navigator.geolocation.getCurrentPosition(p=>fin(p.coords),()=>fin(null),{enableHighAccuracy:true,timeout:5500,maximumAge:60000}); }); }
+
+  // building sheet
+  function tOpen(id,refresh){
+    const b=T.b.find(x=>x.id===id); const wrap=$('#sheet'), sh=wrap.querySelector('.sheet');
+    if(!b){ if(refresh) closeDetail(); return; }
+    let keep=null; if(refresh&&sh.querySelector('.t-sheet')) keep={a:$('#tAgent')&&$('#tAgent').value,d:$('#tDoors').value,n:$('#tNote').value};
+    if(!refresh) T.oc=null;
+    state.detailId=null; const selChanged=T.sel!==id; T.sel=id; if(selChanged) tDrawMarkers();
+    const v=tVisits(id), sold=v.filter(x=>x.outcome==='sold').length, z=tZone(b.zone), mgr=state.canAnnounce;
+    const dest=encodeURIComponent(b.address+', Bronx, NY '+b.zip);
+    const hist=v.length?v.map(x=>{ let gps='';
+        if(x.gps_lat!=null){ const d=tDist(x.gps_lat,x.gps_lng,b.lat,b.lng); gps=d<=150?'<div class="t-gps ok">📍 Logged at the building</div>':'<div class="t-gps">📍 Logged '+tFmtDist(d)+' away</div>'; }
+        const can=mgr||x.created_by===state.meId||x.agent_id===state.meId;
+        return '<div class="t-h"><i class="t-dot s-'+x.outcome+'"></i><div style="min-width:0"><div><b>'+T_OUT[x.outcome]+'</b> · '+tEsc(tName(x.agent_id))+(x.doors?' · '+x.doors+' doors':'')+'</div><div class="t-meta">'+fmtStamp(x.created_at)+' · '+tAgo(x.created_at)+'</div>'+(x.note?'<div class="t-meta">'+tEsc(x.note)+'</div>':'')+gps+'</div>'+(can?'<button type="button" class="linkish" data-del="'+x.id+'">Remove</button>':'')+'</div>'; }).join('')
+      :'<p class="t-meta" style="margin:0">No one has worked this building yet.</p>';
+    sh.innerHTML='<div class="t-sheet" data-id="'+id+'">'
+      +'<div class="sheet-head"><h2 id="sheetTitle">'+tEsc(b.address)+'</h2><button class="sheet-x" type="button" aria-label="Close" id="tX">×</button></div>'
+      +'<div class="t-meta">Stop '+T.num[b.id]+' of '+T.b.length+' · '+tEsc(z?z.name:'')+' · Bronx, NY '+tEsc(b.zip)+'</div>'
+      +'<div class="t-facts"><div class="t-fact"><div class="k">Visits</div><div class="v">'+v.length+'</div></div><div class="t-fact"><div class="k">Sold</div><div class="v">'+sold+'</div></div><div class="t-fact"><div class="k">Turf</div><div class="v">'+tEsc(z&&z.agent_id?tName(z.agent_id):'Open')+'</div></div></div>'
+      +'<div class="t-links"><a class="btn btn-ghost btn-small" href="https://maps.apple.com/?daddr='+dest+'" target="_blank" rel="noopener">Apple Maps</a><a class="btn btn-ghost btn-small" href="https://www.google.com/maps/dir/?api=1&destination='+dest+'" target="_blank" rel="noopener">Google Maps</a><button type="button" id="tShow" class="btn btn-ghost btn-small">Show on map</button></div>'
+      +'<div class="t-sec">Log a visit</div>'
+      +'<div class="t-oc-grid">'+Object.entries(T_OUT).map(([k,l])=>'<button type="button" class="t-oc" data-oc="'+k+'" aria-pressed="'+(T.oc===k)+'"><i class="t-dot s-'+k+'"></i>'+l+'</button>').join('')+'</div>'
+      +'<div class="t-form">'
+      +(mgr?'<label>Credit to<select id="tAgent">'+tAgentOpts(state.meId)+'</select></label>':'')
+      +'<label>Doors knocked<input id="tDoors" type="number" inputmode="numeric" min="0" max="500" placeholder="Optional"></label>'
+      +'<label>Note<input id="tNote" maxlength="500" placeholder="e.g. super lets us in after 5pm, try the 4th floor"></label>'
+      +'<button type="button" id="tLogBtn" class="btn btn-primary"'+(T.oc?'':' disabled')+'>'+(T.oc?'Log visit: '+T_OUT[T.oc]:'Pick an outcome to log')+'</button>'
+      +(T.oc==='sold'?'<p class="t-meta" style="margin:0">Also paste the order on the Installs tab so the sale gets credited and paid.</p>':'')
+      +'</div>'
+      +'<div class="t-sec">History</div><div>'+hist+'</div>'
+      +(mgr?'<div style="margin-top:16px"><button type="button" class="linkish" id="tRemoveB">Remove this building from the list</button></div>':'')
+      +'</div>';
+    if(keep){ if(keep.a&&$('#tAgent')) $('#tAgent').value=keep.a; $('#tDoors').value=keep.d||''; $('#tNote').value=keep.n||''; }
+    $('#tX').onclick=tClose;
+    $('#tShow').onclick=()=>{ tClose(); if(T.map){ T.map.setView([b.lat,b.lng],17); } $('#tMap').scrollIntoView({behavior:'smooth',block:'center'}); };
+    sh.querySelectorAll('[data-oc]').forEach(x=>x.onclick=()=>{ T.oc=x.dataset.oc; tOpen(id,true); });
+    $('#tLogBtn').onclick=()=>tLog(b);
+    sh.querySelectorAll('[data-del]').forEach(x=>x.onclick=async()=>{ if(!confirm('Remove this visit?')) return;
+      const {error}=await sb.from('territory_visits').delete().eq('id',x.dataset.del);
+      if(error){ toast('Couldn\'t remove it. Try again.'); return; }
+      T.v=T.v.filter(y=>y.id!==x.dataset.del); renderTerritory(); toast('Visit removed'); });
+    if(mgr) $('#tRemoveB').onclick=async()=>{ if(!confirm('Remove '+b.address+' from the map? Its visit history is kept.')) return;
+      const {error}=await sb.from('territory_buildings').update({active:false}).eq('id',b.id);
+      if(error){ toast('Couldn\'t remove it. Try again.'); return; }
+      tClose(); T.b=T.b.filter(y=>y.id!==b.id); renderTerritory(); toast(b.address+' removed'); };
+    if(wrap.hidden||!refresh){ wrap.hidden=false; document.body.style.overflow='hidden'; sh.scrollTop=0; $('#tX').focus({preventScroll:true}); }
+  }
+  function tClose(){ closeDetail(); if(T.sel!=null){ T.sel=null; tDrawMarkers(); } }
+  async function tLog(b){
+    if(!T.oc) return; const btn=$('#tLogBtn'); btn.disabled=true; btn.textContent='Saving…';
+    const agent=state.canAnnounce&&$('#tAgent')?$('#tAgent').value:state.meId;
+    const row={building_id:b.id,agent_id:agent,outcome:T.oc,doors:+$('#tDoors').value||null,note:$('#tNote').value.trim().slice(0,500)};
+    const pos=await tGps(); if(pos){ row.gps_lat=pos.latitude; row.gps_lng=pos.longitude; row.gps_acc=pos.accuracy; }
+    const {data,error}=await sb.from('territory_visits').insert(row).select().single();
+    if(error){ toast('Couldn\'t save the visit. Check your connection and try again.'); btn.disabled=false; btn.textContent='Log visit: '+T_OUT[T.oc]; return; }
+    const label=T_OUT[T.oc]; T.oc=null; T.v.unshift(data); $('#tDoors').value=''; $('#tNote').value='';
+    renderTerritory(); toast(label+' logged at '+b.address);
+  }
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&!$('#sheet').hidden&&$('#sheet .t-sheet')) tClose(); });
+  $('#sheet').addEventListener('click',e=>{ if(e.target.id==='sheet'&&T.sel!=null){ T.sel=null; tDrawMarkers(); } });
+  $('#tMe').onclick=tLocate; $('#tAll').onclick=tFitAll;
+  document.querySelectorAll('#tSeg button').forEach(b=>b.onclick=()=>{ T.view=b.dataset.v; document.querySelectorAll('#tSeg button').forEach(x=>x.setAttribute('aria-pressed',x===b)); renderTerritory(); });
+  function showTerritory(){ if(tInitMap()) setTimeout(()=>{ T.map.invalidateSize(); if(!T.fitted&&T.b.length){ tFitAll(); T.fitted=true; } },60); renderTerritory(); }
+
   // ---------- sign-in ----------
   const gate=$('#gate'), gErr=$('#gErr');
   function gateStep(step){ ['gateSetup','gateEmail','gateName'].forEach(id=>$('#'+id).hidden=id!==step); gErr.textContent=''; gate.hidden=!step; }
@@ -3167,6 +3503,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         renderWireless(); renderLeaders(); renderPayouts();
       },()=>{});
       renderPinned();
+      startTerritory();
     }
     sb.auth.getSession().then(({data})=>onSession(data.session));
     sb.auth.onAuthStateChange((ev,session)=>{ if(ev==='SIGNED_IN'&&!started) onSession(session); if(ev==='SIGNED_OUT') location.reload(); });

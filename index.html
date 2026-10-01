@@ -428,6 +428,14 @@ body.on-chat .wrap{padding-bottom:140px}
 :root{--t-none:#8B93A3;--t-noanswer:#C98A0E;--t-notint:#B3434A;--t-callback:#2A78C8;--t-sold:#1C9254;--t-noaccess:#7656BE}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--t-none:#7D869B;--t-noanswer:#E3A52B;--t-notint:#E0666C;--t-callback:#5AA4EF;--t-sold:#3CC47D;--t-noaccess:#A386EC}}
 :root[data-theme="dark"]{--t-none:#7D869B;--t-noanswer:#E3A52B;--t-notint:#E0666C;--t-callback:#5AA4EF;--t-sold:#3CC47D;--t-noaccess:#A386EC}
+.t-locked{border:1px solid var(--line);border-radius:14px;padding:22px 18px;text-align:center;background:var(--bg)}
+.t-locked h2{margin:0 0 6px;font-size:1.15rem}
+.t-locked p{color:var(--muted);margin:0 0 16px;font-size:.95rem}
+.t-bar{height:10px;border-radius:999px;background:var(--line);overflow:hidden;margin:0 auto 10px;max-width:320px}
+.t-bar i{display:block;height:100%;background:var(--signal);border-radius:999px;transition:width .3s}
+.t-count{font-size:2.1rem;font-weight:800;line-height:1;margin-bottom:2px}
+.t-sub{color:var(--muted);font-size:.85rem}
+.t-until{display:inline-block;margin-top:10px;font-size:.85rem;color:var(--muted)}
 .t-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}
 @media (max-width:520px){.t-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .t-stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:9px 12px;min-width:0}
@@ -687,6 +695,8 @@ body.on-chat .wrap{padding-bottom:140px}
   </div>
 
   <div id="viewMap" hidden>
+    <div id="tLocked" class="t-locked" hidden></div>
+    <div id="tInner">
     <div id="tStats" class="t-stats"></div>
     <div class="t-mapwrap"><div id="tMap" class="t-map" aria-label="Map of promo buildings"></div>
       <div class="t-mapbtns"><button type="button" id="tMe" class="btn btn-ghost btn-small">📍 Near me</button><button type="button" id="tAll" class="btn btn-ghost btn-small">Show all</button></div>
@@ -694,6 +704,7 @@ body.on-chat .wrap{padding-bottom:140px}
     <div id="tLegend" class="t-legend"></div>
     <div class="t-seg" id="tSeg" role="group" aria-label="Show"><button type="button" data-v="list" aria-pressed="true">Buildings</button><button type="button" data-v="turf" aria-pressed="false">Turf &amp; agents</button></div>
     <div id="tPanel"><p class="status">Loading the territory…</p></div>
+    </div>
   </div>
 
   <div id="viewChat" hidden>
@@ -3410,7 +3421,59 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   $('#sheet').addEventListener('click',e=>{ if(e.target.id==='sheet'&&T.sel!=null){ T.sel=null; tDrawMarkers(); } });
   $('#tMe').onclick=tLocate; $('#tAll').onclick=tFitAll;
   document.querySelectorAll('#tSeg button').forEach(b=>b.onclick=()=>{ T.view=b.dataset.v; document.querySelectorAll('#tSeg button').forEach(x=>x.setAttribute('aria-pressed',x===b)); renderTerritory(); });
-  function showTerritory(){ if(tInitMap()) setTimeout(()=>{ T.map.invalidateSize(); if(!T.fitted&&T.b.length){ tFitAll(); T.fitted=true; } },60); renderTerritory(); }
+  // ---------- the Map is earned ----------
+  // Five sales in a Monday-to-Sunday week opens it for ten days, counted from the fifth sale.
+  // The database enforces this too; this is just what the agent sees.
+  state.mapAccess=null;
+  async function loadMapAccess(){
+    if(!sb||!state.meId) return;
+    try{ const {data,error}=await sb.rpc('map_access'); if(!error&&data) state.mapAccess=data; }catch(_){}
+    applyMapAccess();
+  }
+  function mapOpen(){ return !state.mapAccess || !!state.mapAccess.unlocked; }
+  function applyMapAccess(){
+    const a=state.mapAccess; const tab=$('#tabMap'); if(!tab) return;
+    if(!a){ return; }
+    tab.textContent = a.unlocked ? 'Map' : '\uD83D\uDD12 Map';
+    if(!a.unlocked && state.tab==='map') renderMapLocked();
+  }
+  function fmtUntil(iso){
+    const d=new Date(iso); if(isNaN(d)) return '';
+    const days=Math.max(0,Math.ceil((d-Date.now())/86400000));
+    return d.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'})
+      +' ('+days+(days===1?' day':' days')+' left)';
+  }
+  function renderMapLocked(){
+    const a=state.mapAccess||{count:0,needed:5};
+    const box=$('#tLocked'), inner=$('#tInner');
+    const open=mapOpen();
+    box.hidden=open; if(inner) inner.hidden=!open;
+    if(open){
+      if(a.until&&!a.always){
+        let note=$('#tUntil');
+        if(!note){ note=document.createElement('div'); note.id='tUntil'; note.className='t-until'; $('#tStats').before(note); }
+        note.textContent='\uD83D\uDD13 Map access until '+fmtUntil(a.until);
+      }
+      return;
+    }
+    const need=a.needed||5, got=Math.min(a.count||0,need), left=Math.max(0,need-(a.count||0));
+    box.innerHTML='';
+    const h=document.createElement('h2'); h.textContent='\uD83D\uDD12 Earn the Map';
+    const p=document.createElement('p');
+    p.textContent='Write '+need+' sales in a week and the Map opens for 10 days. Internet orders and activated wireless lines both count.';
+    const c=document.createElement('div'); c.className='t-count'; c.textContent=(a.count||0)+' / '+need;
+    const sub=document.createElement('div'); sub.className='t-sub';
+    sub.textContent=left===0?'Unlocking\u2026 pull down to refresh.':left+' more this week'+(a.week_start?' (week of '+fmtShort(a.week_start)+')':'');
+    const bar=document.createElement('div'); bar.className='t-bar';
+    const fill=document.createElement('i'); fill.style.width=Math.round(got/need*100)+'%'; bar.append(fill);
+    box.append(h,p,c,sub,bar);
+  }
+  function showTerritory(){
+    if(!mapOpen()){ renderMapLocked(); return; }
+    renderMapLocked();
+    if(tInitMap()) setTimeout(()=>{ T.map.invalidateSize(); if(!T.fitted&&T.b.length){ tFitAll(); T.fitted=true; } },60);
+    renderTerritory();
+  }
 
   // ---------- sign-in ----------
   const gate=$('#gate'), gErr=$('#gErr');
@@ -3466,6 +3529,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       $('#signOut').hidden=false;
       state.user=makeUser(); state.assets=assetsApi; state.db=makeDb();
       state.canAnnounce=(state.profiles[state.meId]||{}).role==='manager';
+      loadMapAccess();
       buildTeamAccordion();
       sb.rpc('is_owner').then(({data})=>{ state.isOwner=!!data; applyOwnerUi(); }).catch(()=>{});
       $('#teamBtn').hidden=!state.canAnnounce; $('#payBtn').hidden=false; document.querySelector('.tabs').classList.add('five');
@@ -3483,7 +3547,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       ensureNames(Object.keys(state.profiles));
       document.addEventListener('visibilitychange',async()=>{ if(document.visibilityState!=='visible') return; await loadProfiles(); state.names={}; ensureNames([...Object.keys(state.profiles),...state.installs.map(i=>i.agentId)]); });
       state.db.collection('installs').onSnapshot(snap=>{
+        const before=(state.installs||[]).length;
         state.installs=snap.docs.map(d=>({id:d.id,...d.data()}));
+        if(state.installs.length!==before) loadMapAccess();
         render(); ensureNames(state.installs.map(i=>i.agentId));
       },()=>{ $('#offline').hidden=false; });
       state.db.collection('announcements').orderBy('createdAt','desc').limit(50).onSnapshot(snap=>{

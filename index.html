@@ -1189,10 +1189,12 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     r.innerHTML=who+'<label>Customer *<input data-f="customer" autocomplete="off"></label><div class="dates"><label>Sale date *<input type="date" data-f="saleDate"></label><label>Install date *<input type="date" data-f="installDate"></label></div>'
       +'<div class="dates"><label>Install time *<input data-f="window" placeholder="8:00 AM to 12:00 PM">'
       +'<span class="selfrow"><input type="checkbox" data-f="selfInstall" id="si'+idx+'"><label for="si'+idx+'">Self-install \u2014 no technician</label></span></label>'
-      +'<label>Order # (MON) *<input data-f="mon" autocomplete="off" inputmode="numeric"></label></div>'
+      +'<label>Order # (MON) *<input data-f="mon" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="NY12342674074"></label></div>'
       +'<label>Service address *<input data-f="address" autocomplete="off"></label><label>Customer phone *<input data-f="phone" inputmode="tel"></label>'
       +'<div class="row-tools"><span class="dup-note" hidden></span><button class="linkish rm" type="button">Remove</button></div>';
     ['customer','window','mon','address'].forEach(f=>{ r.querySelector('[data-f='+f+']').value=d[f]||''; });
+    { const mi=r.querySelector('[data-f=mon]');
+      mi.oninput=()=>{ const at=mi.selectionStart; mi.value=mi.value.toUpperCase(); try{ mi.setSelectionRange(at,at); }catch(_){} }; }
     { const si=r.querySelector('[data-f=selfInstall]'), w=r.querySelector('[data-f=window]');
       const sync=()=>{ w.disabled=si.checked; if(si.checked) w.value=''; w.placeholder=si.checked?'Not needed':'8:00 AM to 12:00 PM'; };
       si.checked=!!d.selfInstall; sync();
@@ -1255,9 +1257,15 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     if(!parseISO(d.saleDate)) miss('Sale date');
     if(!parseISO(d.installDate)) miss('Install date');
     if(!d.selfInstall&&!(d.window||'').trim()) miss('Install time');
-    const md=(d.mon||'').replace(/\D/g,'');
-    if(!md) miss('Order # (MON)');
-    else if(md.length!==11) bad('an 11-digit MON \u2014 that one has '+md.length+(md.length===1?' digit':' digits'));
+    // Every MON on the board is two letters then 11 digits (NY, and one NJ), and the pay report
+    // matches on the whole string, so a missing prefix fails as badly as a wrong digit.
+    const mraw=(d.mon||'').trim().toUpperCase();
+    const md=mraw.replace(/\D/g,'');
+    if(!mraw) miss('Order # (MON)');
+    else if(!/^[A-Z]{2}[0-9]{11}$/.test(mraw)){
+      if(md.length!==11) bad('an 11-digit MON \u2014 that one has '+md.length+(md.length===1?' digit':' digits'));
+      else bad('a MON that starts with two letters, like NY12342674074');
+    }
     if(!(d.address||'').trim()) miss('Service address');
     const pd=(d.phone||'').replace(/\D/g,'');
     if(!pd) miss('Customer phone');
@@ -3228,7 +3236,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   }
   const tBump=()=>{ clearTimeout(tTimer); tTimer=setTimeout(loadTerritory,250); };
   function startTerritory(){
-    loadTerritory();
+    if(mapOpen()) loadTerritory();
     sb.channel('rt-territory')
       .on('postgres_changes',{event:'*',schema:'public',table:'territory_visits'},tBump)
       .on('postgres_changes',{event:'*',schema:'public',table:'territory_zones'},tBump)
@@ -3431,11 +3439,18 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     applyMapAccess();
   }
   function mapOpen(){ return !state.mapAccess || !!state.mapAccess.unlocked; }
+  let mapWasOpen=null;
   function applyMapAccess(){
-    const a=state.mapAccess; const tab=$('#tabMap'); if(!tab) return;
-    if(!a){ return; }
+    const a=state.mapAccess; const tab=$('#tabMap'); if(!tab||!a) return;
     tab.textContent = a.unlocked ? 'Map' : '\uD83D\uDD12 Map';
-    if(!a.unlocked && state.tab==='map') renderMapLocked();
+    // Locked agents get empty results rather than an error, so a cached empty territory
+    // would survive the unlock. Drop it and refetch the moment access changes either way.
+    if(mapWasOpen!==null && mapWasOpen!==!!a.unlocked){
+      T.loaded=false; T.b=[]; T.z=[]; T.v=[]; T.fitted=false;
+      if(a.unlocked&&sb) loadTerritory();
+    }
+    mapWasOpen=!!a.unlocked;
+    if(state.tab==='map') showTerritory();
   }
   function fmtUntil(iso){
     const d=new Date(iso); if(isNaN(d)) return '';

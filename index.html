@@ -252,6 +252,7 @@ button{cursor:pointer}
 .hist li.tappable{cursor:pointer}
 .hist li.tappable b::after{content:' ›';color:var(--muted)}
 .hist li.open b::after{content:' ⌄'}
+.pay-dl{margin:0 0 10px}
 .pay-more{margin-top:8px;display:grid;gap:6px}
 .pay-more .dl{margin:0}
 .wl-chip.paid{background:color-mix(in srgb,var(--done) 22%,transparent);color:var(--ink)}
@@ -2799,6 +2800,113 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
   // ---------- pay statements ----------
   state.payFor=null;
+  // ---------- statement PDF ----------
+  // One line per order and per phone number, no commission amounts. Verizon splits a wireless
+  // line into several commission components; that split is a company-level accounting matter,
+  // so the statement shows the plan that was sold, once.
+  const PDF_ACRONYMS={fios:'FIOS',tv:'TV',hd:'HD',byod:'BYOD',sim:'SIM'};
+  function pdfTitle(v){
+    return String(v||'').toLowerCase().replace(/\b[a-z0-9]+\b/g,w=>
+      PDF_ACRONYMS[w] || (/^\d+[a-z]*$/.test(w)? w.toUpperCase() : w.charAt(0).toUpperCase()+w.slice(1)));
+  }
+  function pdfPlan(v){ const t=pdfTitle(v); return (!t||/spiff/i.test(t)||/^smartphone$/i.test(t))? '' : t; }
+  function pdfRiskLabel(r){ return r==='high'?'High risk — reduced':r==='medium'?'Medium risk — reduced':''; }
+  function pdfEsc(v){ return String(v==null?'':v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  function pdfRows(items){
+    const net=items.filter(r=>r.kind!=='wireless').map(r=>({
+      name: genericName(r.customer)? '' : pdfTitle(r.customer),
+      ref: String(r.doc_num||'').toUpperCase(),
+      plan: pdfTitle(r.product), risk: r.risk||null
+    })).sort((a,b)=>(a.name||'~').localeCompare(b.name||'~'));
+
+    const byPhone=new Map();
+    items.filter(r=>r.kind==='wireless').forEach(r=>{
+      const k=digits10(r.doc_num); if(!k) return;
+      const cur=byPhone.get(k)||{name:'',ref:fmtPhone(r.doc_num),plans:[],risk:null};
+      if(!cur.name&&!genericName(r.customer)) cur.name=pdfTitle(r.customer);
+      const pl=pdfPlan(r.product); if(pl&&!cur.plans.includes(pl)) cur.plans.push(pl);
+      if(r.risk) cur.risk=r.risk;
+      byPhone.set(k,cur);
+    });
+    const wl=[...byPhone.values()].map(w=>({name:w.name,ref:w.ref,plan:w.plans[0]||'Wireless line',risk:w.risk}))
+      .sort((a,b)=>(a.name||'~').localeCompare(b.name||'~'));
+    return {net,wl};
+  }
+
+  const PDF_CSS='@page{size:Letter;margin:0}*{box-sizing:border-box}'
+   +'body{margin:0;font:13px/1.45 -apple-system,"Segoe UI",Helvetica,Arial,sans-serif;color:#15181d;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+   +'.page{width:8.5in;min-height:11in;padding:.62in .6in;display:flex;flex-direction:column}'
+   +'header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #15181d;padding-bottom:14px}'
+   +'.brand{display:flex;gap:11px;align-items:center}'
+   +'.mark{width:40px;height:40px;border-radius:9px;background:#0B7A84;color:#fff;display:grid;place-items:center;font-weight:800;font-size:15px;letter-spacing:.5px}'
+   +'.co{font-weight:800;font-size:16px;letter-spacing:-.2px}.sub{color:#5d646e;font-size:11.5px}'
+   +'.doc{text-align:right}.dt{font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.09em;color:#5d646e}'
+   +'.dd{font-size:15px;font-weight:700;margin-top:2px}'
+   +'.who{display:flex;justify-content:space-between;align-items:baseline;margin:18px 0 6px}'
+   +'.nm{font-size:21px;font-weight:800;letter-spacing:-.3px}.cnt{color:#5d646e;font-size:12px}'
+   +'section{margin-top:18px}'
+   +'h2{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:#5d646e;margin:0 0 7px;font-weight:700}'
+   +'h2 .n{display:inline-block;background:#eef1f4;color:#15181d;border-radius:9px;padding:1px 7px;font-size:10.5px;margin-left:5px;letter-spacing:0}'
+   +'table{width:100%;border-collapse:collapse}'
+   +'th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#878e98;font-weight:700;padding:0 8px 5px 0;border-bottom:1px solid #d9dee4}'
+   +'td{padding:7px 8px 7px 0;border-bottom:1px solid #eef1f4;vertical-align:top}td.s{font-weight:600}'
+   +'.mono{font-variant-numeric:tabular-nums;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;white-space:nowrap}'
+   +'.muted{color:#878e98;font-weight:400;font-style:italic}'
+   +'.flag{display:inline-block;margin-left:7px;border-radius:4px;padding:0 5px;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;vertical-align:1px;white-space:nowrap}'
+   +'.flag.medium{background:#fdf0e3;color:#8a4b08;border:1px solid #f0d5b4}'
+   +'.flag.high{background:#fcebea;color:#99261c;border:1px solid #f2c9c5}'
+   +'footer{margin-top:auto;padding-top:16px;border-top:1px solid #d9dee4;color:#5d646e;font-size:10.5px}'
+   +'footer p{margin:0 0 5px}.gen{color:#9aa1ab;margin-top:9px}';
+
+  function payStatementHtml(agent,payDate,items){
+    const {net,wl}=pdfRows(items);
+    const all=net.concat(wl), total=all.length;
+    const hi=all.filter(r=>r.risk==='high').length, md=all.filter(r=>r.risk==='medium').length;
+    const flagged=[md?md+' medium risk':'', hi?hi+' high risk':''].filter(Boolean).join(' · ');
+    const nameCell=r=>(r.name? pdfEsc(r.name) : '<span class="muted">Name not on report</span>')
+      +(r.risk?'<span class="flag '+pdfEsc(r.risk)+'">'+pdfEsc(pdfRiskLabel(r.risk))+'</span>':'');
+    const sect=(label,refHead,rows)=>rows.length? '<section><h2>'+label+' <span class="n">'+rows.length+'</span></h2>'
+      +'<table><thead><tr><th>Customer</th><th>'+refHead+'</th><th>Plan</th></tr></thead><tbody>'
+      +rows.map(r=>'<tr><td class="s">'+nameCell(r)+'</td><td class="mono">'+pdfEsc(r.ref)+'</td><td>'+pdfEsc(r.plan)+'</td></tr>').join('')
+      +'</tbody></table></section>' : '';
+    return '<!doctype html><html><head><meta charset="utf-8"><title>'+pdfEsc('Pay statement - '+agent+' - '+payDate)+'</title>'
+      +'<style>'+PDF_CSS+'</style></head><body><article class="page">'
+      +'<header><div class="brand"><div class="mark">MD</div><div><div class="co">Market Direct LLC</div>'
+      +'<div class="sub">Verizon Residential</div></div></div>'
+      +'<div class="doc"><div class="dt">Pay statement</div><div class="dd">'+pdfEsc(fmtLong(payDate))+'</div></div></header>'
+      +'<div class="who"><div class="nm">'+pdfEsc(agent)+'</div><div class="cnt">'+total+' paid item'+(total===1?'':'s')
+      +(flagged?' · '+pdfEsc(flagged):'')+'</div></div>'
+      +sect('Internet','Order # (MON)',net)
+      +sect('Wireless','Phone',wl)
+      +'<footer><p>This statement lists what Verizon paid on. It does not show commission amounts — those come from '
+      +'Market Direct separately. Questions about a line go to your manager.</p>'
+      +'<p class="gen">Generated '+pdfEsc(new Date().toLocaleDateString(undefined,{month:'long',day:'numeric',year:'numeric'}))
+      +' · Install Board</p></footer></article></body></html>';
+  }
+
+  // Printed through a hidden frame: on iPhone the print sheet offers Save to Files, which
+  // writes a real PDF. No outside library, so it still works when the network is poor.
+  function downloadPayPdf(btn,agent,payDate,items){
+    const was=btn.textContent; btn.disabled=true; btn.textContent='Preparing…';
+    const done=()=>{ btn.disabled=false; btn.textContent=was; };
+    try{
+      const old=document.getElementById('payPrint'); if(old) old.remove();
+      const f=document.createElement('iframe'); f.id='payPrint';
+      f.setAttribute('aria-hidden','true');
+      f.style.cssText='position:fixed;left:-9999px;top:0;width:8.5in;height:11in;border:0';
+      document.body.append(f);
+      const d=f.contentDocument||f.contentWindow.document;
+      d.open(); d.write(payStatementHtml(agent,payDate,items)); d.close();
+      setTimeout(()=>{
+        try{ f.contentWindow.focus(); f.contentWindow.print(); }
+        catch(_){ toast('Couldn\'t open the print sheet. Try again.'); }
+        done();
+        setTimeout(()=>{ const n=document.getElementById('payPrint'); if(n) n.remove(); },120000);
+      },350);
+    }catch(e){ toast('Couldn\'t build the statement. Try again.'); done(); }
+  }
+
   async function openPay(agentId){
     state.detailId=null;
     const master=agentId==='__master'&&state.isOwner;
@@ -2832,6 +2940,13 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       const risky=weeks[k].filter(r=>r.risk).length;
       head2.textContent=(k==='undated'?'Undated':'Paid '+fmtLong(k))+' — '+weeks[k].length+(weeks[k].length===1?' item':' items')+(risky?' · '+risky+' at reduced commission':'');
       body.append(head2);
+      if(k!=='undated'){
+        const dl=document.createElement('button'); dl.type='button'; dl.className='btn btn-ghost btn-small pay-dl';
+        dl.textContent='🧾 Save as PDF';
+        dl.title='Opens the print sheet — choose Save to Files';
+        dl.onclick=()=>downloadPayPdf(dl,agentLabel(who),k,weeks[k]);
+        body.append(dl);
+      }
       const ul=document.createElement('ul'); ul.className='hist';
       weeks[k].forEach(r=>{
         const li=document.createElement('li'); li.className='tappable';

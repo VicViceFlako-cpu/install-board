@@ -683,7 +683,7 @@ body.on-chat .wrap{padding-bottom:140px}
         <label>Name<input id="tmName" autocomplete="off" autocapitalize="words"></label>
         <label>Email<input id="tmEmail" type="email" inputmode="email" autocapitalize="off" autocomplete="off"></label>
         <label>Starter password<input id="tmPass" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="At least 6 characters"></label>
-        <label>Role<select id="tmRole"><option value="agent">Agent</option><option value="manager">Manager</option></select></label>
+        <label>Role<select id="tmRole"><option value="agent">Agent</option><option value="lead">Team leader</option><option value="manager">Manager</option></select></label>
         <button id="tmAdd" class="btn btn-primary">Add teammate</button>
       </div>
       <div id="tmMsg" class="team-msg" role="status"></div>
@@ -692,6 +692,35 @@ body.on-chat .wrap{padding-bottom:140px}
       <h2>Team</h2>
       <p class="note">Deactivating someone blocks sign-in but keeps all their orders credited to them.</p>
       <div id="teamList"></div>
+    </section>
+    <section class="team-sec" id="secRecruit">
+      <h2>Put a new teammate forward</h2>
+      <p class="note">Send their details to an owner. Once it's approved they get a sign-in and join your team automatically. Right after you add them you'll get a welcome text to send with the onboarding link.</p>
+      <div class="team-form">
+        <label>Name<input id="rcName" autocomplete="off" autocapitalize="words"></label>
+        <label>Phone<input id="rcPhone" type="tel" inputmode="tel" autocomplete="off" placeholder="10 digits"></label>
+        <label>Email<input id="rcEmail" type="email" inputmode="email" autocapitalize="off" autocomplete="off"></label>
+        <button id="rcAdd" class="btn btn-primary">Send for approval</button>
+      </div>
+      <div id="rcMsg" class="team-msg" role="status"></div>
+      <div id="rcList"></div>
+    </section>
+    <section class="team-sec" id="secMyTeam">
+      <h2>My team</h2>
+      <p class="note">The people reporting to you. You see their orders in full, get their install reminder texts, and can open their pay reports.</p>
+      <div id="myTeamList"></div>
+    </section>
+    <section class="team-sec" id="secPending">
+      <h2>Waiting for approval</h2>
+      <p class="note">Names team leaders have put forward. Approving creates their sign-in and puts them on the leader's team. Nothing is sent automatically — you'll get a message to text them.</p>
+      <div id="pendList"></div>
+      <div id="pendMsg" class="team-msg" role="status"></div>
+    </section>
+    <section class="team-sec" id="secApps">
+      <h2>Applications</h2>
+      <p class="note">Onboarding forms sent in from <b id="applyLink">/apply</b>. Approving creates their sign-in and joins them to whoever referred them. ID photos and headshots delete themselves 90 days after approval; Social Security Numbers stay encrypted and are only shown when you tap to see one.</p>
+      <div id="appList"></div>
+      <div id="appMsg" class="team-msg" role="status"></div>
     </section>
   </div>
 
@@ -734,7 +763,23 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 (function(){
   const $ = s => document.querySelector(s);
   const WINDOWS = ['8:00 AM to 12:00 PM','9:00 AM to 1:00 PM','11:00 AM to 3:00 PM','12:00 PM to 4:00 PM','1:00 PM to 5:00 PM','3:00 PM to 7:00 PM','4:00 PM to 8:00 PM','8:00 AM to 5:00 PM'];
-  const state = { installs: [], dmWith: '', db: null, sample: null, canImages: false, showPast: false, drafts: null, shotUrl: null, openItem: null, openMode: 'actions', rescheduleDraft: '', rescheduleWin: '', rescheduleWinOther: false, names: {}, pendingCredit: '', user: null, meId: null, assets: null, messages: [], tab: 'installs', profiles: {}, calMonth: null, calSel: '', attach: null, announcements: [], canAnnounce: false, announceMode: false, mentionMap: {}, suggestions: [], suggestIdx: 0 };
+  const state = { installs: [], dmWith: '', db: null, sample: null, canImages: false, showPast: false, drafts: null, shotUrl: null, openItem: null, openMode: 'actions', rescheduleDraft: '', rescheduleWin: '', rescheduleWinOther: false, names: {}, pendingCredit: '', user: null, meId: null, assets: null, messages: [], tab: 'installs', profiles: {}, calMonth: null, calSel: '', attach: null, announcements: [], canAnnounce: false, announceMode: false, mentionMap: {}, suggestions: [], suggestIdx: 0, isLead: false, teamIds: new Set(), recruits: [], apps: [] };
+
+  // ---------- team leaders ----------
+  // A team leader sits between agent and manager: they see their own people's orders in full,
+  // get the install reminder texts for them, can look at their pay reports (no dollar figures),
+  // and can put a new teammate forward for an owner to approve. Anything that writes to someone
+  // else's order, and everything in the manager tools, stays where it was.
+  function refreshTeamIds(){
+    const me=state.meId, out=new Set();
+    if(me) Object.keys(state.profiles||{}).forEach(id=>{ if((state.profiles[id]||{}).team_lead_id===me) out.add(id); });
+    state.teamIds=out;
+    state.isLead=((state.profiles||{})[me]||{}).role==='lead';
+  }
+  function onMyTeam(agentId){ return !!agentId&&agentId!==state.meId&&state.teamIds.has(agentId); }
+  function seesFull(agentId){ return state.canAnnounce||(!!state.meId&&agentId===state.meId)||onMyTeam(agentId); }
+  function myTeamIds(){ return state.meId?[state.meId,...state.teamIds]:[]; }
+  function roleLabel(r){ return r==='manager'?'Manager':r==='lead'?'Team leader':'Agent'; }
   const ICON_OK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
   const ICON_UNDO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 010 10h-3"/></svg>';
   const ICON_DEL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>';
@@ -918,7 +963,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const mine=!state.canAnnounce;
     let today, upcoming;
     if(mine){
-      const own=state.installs.filter(i=>state.meId&&i.agentId===state.meId&&i.status!=='installed'&&i.status!=='cancelled'&&parseISO(i.installDate)&&daysFromToday(i.installDate)>=0)
+      // A team leader's "next up" covers their own people as well as themselves.
+      const own=state.installs.filter(i=>seesFull(i.agentId)&&i.status!=='installed'&&i.status!=='cancelled'&&parseISO(i.installDate)&&daysFromToday(i.installDate)>=0)
         .sort((a,b)=>a.installDate.localeCompare(b.installDate));
       today=own.filter(i=>daysFromToday(i.installDate)===0); upcoming=own;
     } else {
@@ -978,13 +1024,15 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   // 'remind' before the window ends on install day; 'confirm' after it (or a missed day still open)
   function textPhase(i){
     if(!i.phone||(i.phone||'').replace(/\D/g,'').length<10) return null;
-    const canAct=state.canAnnounce||(!!state.meId&&i.agentId===state.meId); if(!canAct) return null;
+    const own=state.canAnnounce||(!!state.meId&&i.agentId===state.meId);
+    if(!own&&!onMyTeam(i.agentId)) return null;
     const n=daysFromToday(i.installDate), st=i.status||'scheduled';
     if(n===null||st==='cancelled') return null;
     if(n===0){ const end=windowEnd(i); return (end&&Date.now()>=end.getTime())?'confirm':(st==='scheduled'?'remind':'confirm'); }
     if(n<0&&n>=-3&&st!=='cancelled') return 'confirm';
-    // two weeks on and paid: the service stuck, so it's safe to ask who else needs it
-    if(st==='installed'&&i.payoutStatus==='paid'&&!i.referralAt&&n<=-14&&n>=-60) return 'referral';
+    // two weeks on and paid: the service stuck, so it's safe to ask who else needs it.
+    // The ⭐ card marks itself sent, so it stays with whoever can write to the order.
+    if(own&&st==='installed'&&i.payoutStatus==='paid'&&!i.referralAt&&n<=-14&&n>=-60) return 'referral';
     return null;
   }
   function selfInstallSms(i){
@@ -1066,7 +1114,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     if(i.phone){ const a=document.createElement('a'); a.href='tel:'+i.phone; a.textContent=fmtPhone(i.phone); row('Phone',a); }
     row('Verizon status', i.vzStatus||'');
     if(state.canAnnounce&&i.payoutStatus==='charged_back') row('Payout','Charged back '+fmtStamp(i.paidAt));
-    else if(st==='installed'&&(state.canAnnounce||i.agentId===state.meId)&&i.payoutStatus!=='charged_back') row('Payout', i.payoutStatus==='paid'? 'Paid '+fmtStamp(i.paidAt) : 'Not paid yet');
+    else if(st==='installed'&&seesFull(i.agentId)&&i.payoutStatus!=='charged_back') row('Payout', i.payoutStatus==='paid'? 'Paid '+fmtStamp(i.paidAt) : 'Not paid yet');
     if(st!=='scheduled'&&i.statusAt) row(st==='installed'?'Marked installed':'Marked cancelled', fmtStamp(i.statusAt)+(i.statusBy?' by '+personName(i.statusBy):''));
     row('Added', [fmtStamp(i.createdAt), i.createdBy?'by '+personName(i.createdBy):''].filter(Boolean).join(' '));
     sh.append(dl);
@@ -1332,6 +1380,62 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   const VZ_LABELS=['contact summary:','incorrect account','order summary','verizon order confirmation','account name','billing telephone number','mobile telephone number','alternate telephone number','service address','mon','order type','order date','due date','appointment time','status','soc','<','>','+','-'];
   function isLabel(l){ const x=l.toLowerCase().replace(/\s*>\s*$/,'').trim(); return VZ_LABELS.includes(x)||VZ_LABELS.includes(l.toLowerCase()); }
   function mdyToISO(t){ const m=/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec(t.trim()); if(!m) return ''; let y=+m[3]; if(y<100) y+=2000; const d=iso(new Date(y,+m[1]-1,+m[2])); return parseISO(d)?d:''; }
+  // ---------- dates in pasted order text ----------
+  // Copying an order summary doesn't always put each date alone on its own line: it can come
+  // back as "Order Date: 10/1/26", with dashes or dots instead of slashes, or spelled out.
+  // Read all of those, and only accept a date that is really a date.
+  const MONTHS={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,sept:9,oct:10,nov:11,dec:12};
+  function isoFrom(y,m,d){
+    y=+y; m=+m; d=+d;
+    if(y<100) y+=2000;
+    if(!(m>=1&&m<=12)||!(d>=1&&d<=31)||!(y>=2015&&y<=2040)) return '';
+    const s=y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const dt=parseISO(s);
+    return (dt&&dt.getDate()===d&&dt.getMonth()===m-1)?s:'';
+  }
+  function findDates(s){
+    const out=[]; let m, re;
+    const push=v=>{ if(v) out.push(v); };
+    re=/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/g;                 while((m=re.exec(s))) push(isoFrom(m[1],m[2],m[3]));
+    re=/\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})\b/g;    while((m=re.exec(s))) push(isoFrom(m[3],m[1],m[2]));
+    re=/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s*(\d{4})\b/gi;
+    while((m=re.exec(s))) push(isoFrom(m[3],MONTHS[m[1].toLowerCase()],m[2]));
+    re=/\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?,?\s*(\d{4})\b/gi;
+    while((m=re.exec(s))) push(isoFrom(m[3],MONTHS[m[2].toLowerCase()],m[1]));
+    return out;
+  }
+  // A date sitting beside its label — same line, or on one of the next few lines.
+  // Only what follows the label is read, so "Order Date 9/28 Due Date 10/9" on one line
+  // doesn't hand both fields the same date.
+  function dateNear(lines,low,re){
+    for(let i=0;i<lines.length;i++){
+      const m=re.exec(low[i]); if(!m) continue;
+      const same=findDates(lines[i].slice(m.index+m[0].length));
+      if(same.length) return same[0];
+      for(let k=i+1;k<Math.min(lines.length,i+4);k++){
+        const d=findDates(lines[k]);
+        if(d.length) return d[0];
+        // a line of real words that isn't a label means we've walked past this field
+        if(/[a-z]{4,}/i.test(lines[k])&&!isLabel(lines[k])) break;
+      }
+    }
+    return '';
+  }
+  // The same tolerance for the text fields: a value may follow its label on one line
+  // ("Account Name: MARIA SANTOS") or sit on the line below it.
+  function valueNear(lines,low,re){
+    for(let i=0;i<lines.length;i++){
+      const m=re.exec(low[i]); if(!m) continue;
+      const rest=lines[i].slice(m.index+m[0].length).replace(/^[\s:>–—-]+/,'').trim();
+      if(rest) return rest;
+      for(let k=i+1;k<Math.min(lines.length,i+3);k++){
+        if(isLabel(lines[k])) continue;
+        if(lines[k]) return lines[k];
+      }
+      return '';
+    }
+    return '';
+  }
   function parseVerizon(text){
     const lines=text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
     const low=lines.map(l=>l.toLowerCase());
@@ -1341,16 +1445,22 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     // Dates: the paste interleaves labels and values, and the order varies. Take every date
     // in the text, then read them chronologically: earliest = sale (Order Date), latest = install (Due Date).
     const iOrder=idx('order date'), iDue=idx('due date');
-    const allDates=[...new Set(lines.filter(l=>/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(l)).map(mdyToISO).filter(Boolean))].sort();
-    if(allDates.length>=2){ out.saleDate=allDates[0]; out.installDate=allDates[allDates.length-1]; }
+    const orderD=dateNear(lines,low,/order\s*date|sale\s*date|date\s*(placed|ordered|sold)/);
+    const dueD  =dateNear(lines,low,/due\s*date|install(ation)?\s*date|appointment\s*date|service\s*date|scheduled\s*(for|date)/);
+    const allDates=[...new Set(findDates(text))].sort();
+    if(orderD&&dueD){ out.saleDate=orderD; out.installDate=dueD; }
+    else if(dueD){ out.installDate=dueD; out.saleDate=allDates.filter(d=>d<dueD).pop()||''; }
+    else if(orderD){ out.saleDate=orderD; out.installDate=allDates.filter(d=>d>orderD)[0]||''; }
+    else if(allDates.length>=2){ out.saleDate=allDates[0]; out.installDate=allDates[allDates.length-1]; }
     else if(allDates.length===1){
       // only one date: it's the install date unless the paste only shows an order date
       if(iDue>=0||iOrder<0) out.installDate=allDates[0];
       else out.saleDate=allDates[0];
     }
-    const iAcc=idx('account name');
-    if(iAcc>=0){ const n=lines[iAcc+1]; if(n&&!isLabel(n)&&!/\d{5,}/.test(n)) out.customer=n; }
-    const iAd=idx('service address'); const adl=iAd>=0?lines[iAd+1]:''; out.address=(adl&&!isLabel(adl)&&/[a-z]/i.test(adl)&&/\d/.test(adl)&&!/^[A-Z]{2}\d{8,14}$/.test(adl))?adl:'';
+    const nm=valueNear(lines,low,/account\s*name|customer\s*name/);
+    if(nm&&!/\d{5,}/.test(nm)) out.customer=nm;
+    const adl=valueNear(lines,low,/service\s*address|install(ation)?\s*address/);
+    out.address=(adl&&/[a-z]/i.test(adl)&&/\d/.test(adl)&&!/^[A-Z]{2}\d{8,14}$/.test(adl))?adl:'';
     const mon=text.match(/\b[A-Z]{2}\d{8,14}\b/); out.mon=mon?mon[0]:'';
     const ot=lines.find(l=>/^(new install|move|change|upgrade|transfer|reconnect|add|modify)\b/i.test(l)&&!isLabel(l)); out.orderType=ot||'';
     // Appointment window: Verizon writes this several ways (8 AM to 12 PM, 1:00 PM - 5:00 PM,
@@ -1380,7 +1490,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   function fmtPhone(d){ d=(d||'').replace(/\D/g,''); return d.length===10?'('+d.slice(0,3)+') '+d.slice(3,6)+'-'+d.slice(6):d; }
 
   // ---------- reading pasted sale text ----------
-  function readingStatus(msg,isErr){
+  function readingStatus(msg,isErr,draft){
     const p=$('#review'); p.hidden=false; p.innerHTML='';
     const h=document.createElement('h2'); h.textContent=isErr?'Couldn\'t read that text':'Reading sale text';
     const s=document.createElement('div'); s.className='status'+(isErr?' error':''); s.textContent=msg;
@@ -1390,7 +1500,13 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     if(isErr){
       const foot=document.createElement('div'); foot.className='panel-foot';
       const man=document.createElement('button'); man.className='btn btn-primary btn-small'; man.textContent='Enter it by hand';
-      man.onclick=()=>openReview([{agentId:state.pendingCredit||state.meId||'',agent:'',saleDate:todayISO(),installDate:''}],{title:'Add install',hint:'Enter the dates, then save.',showShot:true});
+      // Whatever the read did get stays on the form, so nobody retypes an address it already has.
+      man.onclick=()=>{
+        const row={agentId:state.pendingCredit||state.meId||'',agent:'',saleDate:todayISO(),installDate:''};
+        if(draft) Object.keys(draft).forEach(k=>{ if(draft[k]) row[k]=draft[k]; });
+        const kept=['customer','address','mon','phone','window'].some(k=>row[k]);
+        openReview([row],{title:'Add install',hint:kept?'The rest is filled in — add the dates and check it over, then save.':'Enter the dates, then save.',showShot:true});
+      };
       const c=document.createElement('button'); c.className='btn btn-ghost btn-small'; c.textContent='Cancel'; c.onclick=closeReview;
       foot.append(c);
       { const pt=document.createElement('button'); pt.className='btn btn-ghost btn-small'; pt.textContent='Try pasting again'; pt.onclick=openPaste; foot.append(pt); }
@@ -1451,6 +1567,21 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         openReview([{agentId:state.pendingCredit,agent:'',...v}],{title:'Sale found',hint:'Check the details and fix anything that looks off, then save.',showShot:true});
         return;
       }
+      // Say what it did pick up. By far the most common miss is a paste that stops at
+      // Order Date, because Due Date is the next field down the summary.
+      const got=[];
+      if(v.customer) got.push('the customer');
+      if(v.address) got.push('the address');
+      if(v.mon) got.push('the order number');
+      if(v.saleDate) got.push('the sale date');
+      const list=got.length<2?(got[0]||''):got.slice(0,-1).join(', ')+' and '+got[got.length-1];
+      const why = v.saleDate
+        ? 'Got '+list+' — but the copy stops at Order Date. The install date is the Due Date, the next field below it. Scroll down a little and copy the summary again, or tap “Enter it by hand”: everything above is already filled in, so you’d only add the install date.'
+        : got.length
+          ? 'Got '+list+', but no Order Date or Due Date. Those two are near the bottom of the Order Summary — copy it again from the top, or tap “Enter it by hand”, where what it found is already filled in.'
+          : 'Couldn’t find an Order Date or Due Date in that text. Open the Order Summary, press and hold, tap Select All, then Copy — or enter the install by hand.';
+      readingStatus(why, true, v);
+      return;
     }
     const why=await ensureReader(); if(why){ readingStatus(why,true); return; }
     readingStatus(img?'Looking for the sale date and install date. This usually takes 10–30 seconds.':'Reading the text. This usually takes 10–30 seconds.');
@@ -1567,7 +1698,10 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     $('#viewInstalls').hidden=t!=='installs'; $('#viewChat').hidden=t!=='chat'; $('#viewCal').hidden=t!=='calendar'; $('#viewTeam').hidden=t!=='team'; $('#viewWireless').hidden=t!=='wireless';
     if(t==='wireless') renderWireless(); $('#viewLeaders').hidden=t!=='leaders';
     if(t==='leaders') renderLeaders();
-    if(t==='team'){ loadTeam(); loadSettings(); loadPayHistory(); loadDevices(); loadReportNames(); }
+    if(t==='team'){
+      if(state.canAnnounce){ loadTeam(); loadSettings(); loadPayHistory(); loadDevices(); loadReportNames(); }
+      applyRoleUi(); if(state.isOwner||state.isLead) loadRecruits(); if(state.isOwner) loadApps();
+    }
     if(t==='calendar') renderCal();
     if(t==='map') showTerritory();
     $('#composer').hidden=t!=='chat'; document.body.classList.toggle('on-chat',t==='chat');
@@ -1578,7 +1712,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   $('#tabChat').onclick=()=>showTab('chat');
   $('#tabCal').onclick=()=>showTab('calendar');
   $('#tabWireless').onclick=()=>showTab('wireless');
-  $('#teamBtn').onclick=()=>showTab('team');
+  $('#teamBtn').onclick=()=>{ if(state.canAnnounce||state.isLead) showTab('team'); };
   $('#tabLeaders').onclick=()=>showTab('leaders');
   $('#tabMap').onclick=()=>showTab('map');
 
@@ -1862,14 +1996,15 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   }
   function renderTeam(users){
     const box=$('#teamList'); box.innerHTML='';
-    users.sort((a,b)=>(b.active-a.active)||(a.role===b.role?0:a.role==='manager'?-1:1)||(a.name||a.email).localeCompare(b.name||b.email));
+    const rank=r=>r==='manager'?0:r==='lead'?1:2;
+    users.sort((a,b)=>(b.active-a.active)||(rank(a.role)-rank(b.role))||(a.name||a.email).localeCompare(b.name||b.email));
     users.forEach(u=>{
       const row=document.createElement('div'); row.className='person'+(u.active?'':' off');
       const pn=document.createElement('div'); pn.className='pn'; pn.textContent=(u.name||'(no name yet)')+(u.isMe?' (you)':'');
-      if(u.role==='manager'){ const t=document.createElement('span'); t.className='tag mgr'; t.textContent='Manager'; pn.append(t); }
+      if(u.role&&u.role!=='agent'){ const t=document.createElement('span'); t.className='tag mgr'; t.textContent=roleLabel(u.role); pn.append(t); }
       if(!u.active){ const t=document.createElement('span'); t.className='tag off'; t.textContent='Deactivated'; pn.append(t); }
       const pe=document.createElement('div'); pe.className='pe';
-      pe.textContent=u.email+' · '+(u.lastSignIn?'last signed in '+fmtStamp(u.lastSignIn):'hasn\'t signed in yet');
+      pe.textContent=u.email+' · '+(u.lastSignIn?'last signed in '+fmtStamp(u.lastSignIn):'hasn\'t signed in yet')+(u.teamLeadId?' · on '+personName(u.teamLeadId)+'\u2019s team':'');
       row.append(pn,pe);
       const btns=document.createElement('div'); btns.className='row-btns';
       const mk=(label,fn)=>{ const b=document.createElement('button'); b.type='button'; b.className='btn btn-ghost btn-small'; b.textContent=label; b.onclick=async()=>{ b.disabled=true; try{ await fn(); }catch(e){ toast(e.message); } b.disabled=false; }; btns.append(b); };
@@ -1884,10 +2019,26 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         await teamCall({action:'set_name',userId:u.id,name:nm.trim()}); toast('Name updated'); loadTeam();
       });
       if(!u.isMe){
-        mk(u.role==='manager'?'Make agent':'Make manager',async()=>{
-          const to=u.role==='manager'?'agent':'manager';
-          if(!confirm('Make '+(u.name||u.email)+' '+(to==='manager'?'a manager? Managers can delete orders, change anyone\'s orders, post announcements and manage the team.':'an agent?'))) return;
-          await teamCall({action:'set_role',userId:u.id,role:to}); toast('Role updated'); loadTeam();
+        mk('Change role',async()=>{
+          const to=prompt('Role for '+(u.name||u.email)+' \u2014 type agent, lead or manager:\n\nagent \u2014 their own orders only\nlead \u2014 also sees their team\u2019s orders, reminders and pay reports\nmanager \u2014 full access to the board and the team tools', u.role||'agent');
+          if(to==null) return;
+          const r=String(to).trim().toLowerCase();
+          if(!['agent','lead','manager'].includes(r)){ toast('Type agent, lead or manager.'); return; }
+          if(r===u.role) return;
+          if(!confirm('Make '+(u.name||u.email)+' a '+roleLabel(r).toLowerCase()+'?')) return;
+          await teamCall({action:'set_role',userId:u.id,role:r}); toast('Role updated'); loadTeam(); loadProfiles();
+        });
+        mk('Reports to',async()=>{
+          const leads=users.filter(x=>x.role==='lead'&&x.id!==u.id);
+          if(!leads.length){ toast('No team leaders yet. Change someone\u2019s role to lead first.'); return; }
+          const list=leads.map((x,n)=>(n+1)+'. '+(x.name||x.email)).join('\n');
+          const cur=u.teamLeadId?leads.findIndex(x=>x.id===u.teamLeadId)+1:0;
+          const pick=prompt('Who leads '+(u.name||u.email)+'?\n\n0. Nobody\n'+list, String(cur>0?cur:0));
+          if(pick==null) return;
+          const n=parseInt(pick,10);
+          if(isNaN(n)||n<0||n>leads.length){ toast('Type one of the numbers listed.'); return; }
+          await teamCall({action:'set_lead',userId:u.id,leadId:n===0?null:leads[n-1].id});
+          toast(n===0?'Leader cleared':'Now on '+(leads[n-1].name||leads[n-1].email)+'\u2019s team'); loadTeam(); loadProfiles();
         });
         mk(u.active?'Deactivate':'Reactivate',async()=>{
           if(u.active&&!confirm('Deactivate '+(u.name||u.email)+'? They won\'t be able to sign in. Their orders stay credited to them, and you can reactivate them anytime.')) return;
@@ -1914,6 +2065,295 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     }catch(e){ tmSay(msg,e.message,'err'); }
     b.disabled=false; b.textContent='Add teammate';
   };
+
+  // ---------- recruits: a leader puts a name forward, an owner decides ----------
+  function firstName(n){ return String(n||'').trim().split(/\s+/)[0]||''; }
+  // Their own link: the application that comes back is tied to the leader who sent it.
+  function onboardLink(rid){ return appLink()+'apply.html'+(rid?'?r='+encodeURIComponent(rid):''); }
+  function recruitWelcomeText(name, rid){
+    return 'Hi '+firstName(name)+'! Welcome to the team 🎉 Glad to have you with us.\n\nStart here — this gets your onboarding going:\n'+onboardLink(rid)+'\n\nFill that out and I’ll get your Install Board sign-in over to you next. Any questions, just text me.';
+  }
+  function smsTo(phone,text){ const d=String(phone||'').replace(/\D/g,''); return d.length<10?'':'sms:+1'+d.slice(-10)+'?&body='+encodeURIComponent(text); }
+  // The welcome prompt: a tap-to-text link when we have the number, with share as the fallback.
+  function welcomePrompt(host,name,phone,rid,onSent){
+    const text=recruitWelcomeText(name,rid);
+    host.className='team-msg ok'; host.innerHTML='';
+    host.append(firstName(name)+' is in. Send them this now:');
+    const w=document.createElement('div'); w.className='welcome'; w.textContent=text; host.append(w);
+    const row=document.createElement('div'); row.className='row-btns'; row.style.marginTop='8px';
+    const href=smsTo(phone,text);
+    if(href){
+      const a=document.createElement('a'); a.className='btn btn-primary btn-small'; a.href=href;
+      a.textContent='💬 Text '+firstName(name);
+      a.onclick=()=>{ if(onSent) onSent(); };
+      row.append(a);
+    }
+    const sbtn=document.createElement('button'); sbtn.type='button'; sbtn.className='btn btn-ghost btn-small';
+    sbtn.textContent=href?'Share another way':'Text / share this message';
+    sbtn.onclick=()=>{ shareText(text); if(onSent) onSent(); };
+    row.append(sbtn); host.append(row);
+  }
+  async function loadRecruits(){
+    if(!state.db) return;
+    const {data,error}=await sb.from('recruits').select('id,full_name,phone,email,requested_by,status,note,created_at,welcomed_at').order('created_at',{ascending:false}).limit(100);
+    if(error) return;
+    state.recruits=data||[];
+    renderRecruits(); renderPending();
+  }
+  // A leader's own list: who they've put forward and where each one stands.
+  function renderRecruits(){
+    const box=$('#rcList'); if(!box) return;
+    const mine=(state.recruits||[]).filter(r=>r.requested_by===state.meId);
+    box.innerHTML='';
+    if(!mine.length) return;
+    const h=document.createElement('h3'); h.style.cssText='font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:18px 0 6px';
+    h.textContent='People you’ve put forward'; box.append(h);
+    mine.forEach(r=>{
+      const row=document.createElement('div'); row.className='person'+(r.status==='declined'?' off':'');
+      const pn=document.createElement('div'); pn.className='pn'; pn.textContent=r.full_name;
+      const t=document.createElement('span'); t.className='tag '+(r.status==='approved'?'mgr':'off');
+      t.textContent=r.status==='approved'?'Approved':r.status==='declined'?'Not approved':'Waiting on an owner';
+      pn.append(t);
+      const pe=document.createElement('div'); pe.className='pe';
+      pe.textContent=fmtPhone(r.phone)+' · '+r.email+(r.status==='declined'&&r.note?' · '+r.note:'');
+      row.append(pn,pe);
+      if(r.status==='pending'){
+        const btns=document.createElement('div'); btns.className='row-btns';
+        const a=document.createElement('a'); a.className='btn btn-ghost btn-small';
+        a.href=smsTo(r.phone,recruitWelcomeText(r.full_name,r.id))||'#';
+        a.textContent=r.welcomed_at?'💬 Text the link again':'💬 Text the welcome link';
+        a.onclick=()=>markWelcomed(r.id);
+        btns.append(a); row.append(btns);
+      }
+      box.append(row);
+    });
+  }
+  async function markWelcomed(id){
+    const r=(state.recruits||[]).find(x=>x.id===id); if(!r||r.welcomed_at) return;
+    await sb.from('recruits').update({welcomed_at:new Date().toISOString()}).eq('id',id);
+    loadRecruits();
+  }
+  // The owner's queue. Approving mints the sign-in, then joins them to the leader's team.
+  function renderPending(){
+    const box=$('#pendList'); if(!box||!state.isOwner) return;
+    const pend=(state.recruits||[]).filter(r=>r.status==='pending');
+    box.innerHTML='';
+    if(!pend.length){ const p=document.createElement('p'); p.className='note'; p.textContent='Nothing waiting right now.'; box.append(p); return; }
+    pend.forEach(r=>{
+      const row=document.createElement('div'); row.className='person';
+      const pn=document.createElement('div'); pn.className='pn'; pn.textContent=r.full_name;
+      const pe=document.createElement('div'); pe.className='pe';
+      pe.textContent=fmtPhone(r.phone)+' · '+r.email+' · put forward by '+personName(r.requested_by)+' '+fmtStamp(r.created_at);
+      row.append(pn,pe);
+      const btns=document.createElement('div'); btns.className='row-btns';
+      const msg=$('#pendMsg');
+      const ap=document.createElement('button'); ap.type='button'; ap.className='btn btn-primary btn-small'; ap.textContent='Approve';
+      ap.onclick=async()=>{
+        const pw=prompt('Starter password for '+r.full_name+' (at least 6 characters):');
+        if(pw==null) return;
+        if(pw.length<6){ toast('Password needs at least 6 characters.'); return; }
+        ap.disabled=true; ap.textContent='Approving…'; tmSay(msg,'');
+        try{
+          const made=await teamCall({action:'create_for_recruit',recruitId:r.id,password:pw});
+          const {error}=await sb.rpc('approve_recruit',{p_id:r.id,p_user:made.id});
+          if(error) throw new Error(error.message);
+          const text=welcomeText(r.full_name,r.email,pw);
+          msg.className='team-msg ok'; msg.innerHTML='';
+          msg.append(r.full_name+' is live on the board and on '+personName(r.requested_by)+'’s team. Send them their sign-in:');
+          const w=document.createElement('div'); w.className='welcome'; w.textContent=text; msg.append(w);
+          const sh=document.createElement('button'); sh.type='button'; sh.className='btn btn-ghost btn-small'; sh.style.marginTop='8px';
+          sh.textContent='Text / share this message'; sh.onclick=()=>shareText(text); msg.append(sh);
+          loadRecruits(); loadTeam(); loadProfiles();
+        }catch(e){ tmSay(msg,e.message,'err'); ap.disabled=false; ap.textContent='Approve'; }
+      };
+      const no=document.createElement('button'); no.type='button'; no.className='btn btn-ghost btn-small'; no.textContent='Decline';
+      no.onclick=async()=>{
+        const why=prompt('Reason for '+personName(r.requested_by)+' (optional):'); if(why==null) return;
+        no.disabled=true;
+        const {error}=await sb.rpc('decline_recruit',{p_id:r.id,p_note:why||''});
+        if(error){ tmSay(msg,error.message,'err'); no.disabled=false; return; }
+        toast('Declined'); loadRecruits();
+      };
+      btns.append(ap,no); row.append(btns); box.append(row);
+    });
+  }
+  $('#rcAdd').onclick=async()=>{
+    const name=$('#rcName').value.trim(), phone=$('#rcPhone').value.replace(/\D/g,''),
+          email=$('#rcEmail').value.trim().toLowerCase(), msg=$('#rcMsg');
+    if(!name||name.length<2){ tmSay(msg,'Enter their full name.','err'); return; }
+    if(phone.length!==10){ tmSay(msg,'A 10-digit phone number is required — that one has '+phone.length+(phone.length===1?' digit.':' digits.'),'err'); return; }
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ tmSay(msg,'That email doesn’t look right.','err'); return; }
+    const b=$('#rcAdd'); b.disabled=true; b.textContent='Sending…'; tmSay(msg,'');
+    const {data,error}=await sb.from('recruits').insert({full_name:name,phone,email,requested_by:state.meId}).select('id').single();
+    b.disabled=false; b.textContent='Send for approval';
+    if(error){ tmSay(msg,/duplicate|unique/i.test(error.message)?'Someone already put that email forward.':error.message,'err'); return; }
+    $('#rcName').value=''; $('#rcPhone').value=''; $('#rcEmail').value='';
+    welcomePrompt(msg,name,phone,data.id,()=>markWelcomed(data.id));
+    loadRecruits();
+  };
+  // ---------- onboarding applications (owner only) ----------
+  const APPLY_URL=()=>appLink()+'apply.html';
+  async function loadApps(){
+    if(!state.isOwner) return;
+    const {data,error}=await sb.from('applications')
+      .select('id,created_at,first_name,last_name,phone,email,dob,addr1,addr2,city,state,zip,bg_check_ok,referred,referred_name,lead_id,recruit_id,ssn_last4,id_photo,headshot,status,note,decided_at,decided_by,purge_at,purged_at')
+      .order('created_at',{ascending:false}).limit(100);
+    if(error) return;
+    state.apps=data||[]; renderApps();
+  }
+  function fmtDob(s){ const d=parseISO(s); if(!d) return ''; const yrs=Math.floor((Date.now()-d.getTime())/31557600000); return fmtLong(s)+' · '+yrs+' years old'; }
+  function renderApps(){
+    const box=$('#appList'); if(!box||!state.isOwner) return;
+    const link=$('#applyLink'); if(link) link.textContent=APPLY_URL().replace(/^https?:\/\//,'');
+    const apps=state.apps||[];
+    const open=apps.filter(a=>a.status==='new'), done=apps.filter(a=>a.status!=='new');
+    box.innerHTML='';
+    if(!apps.length){ const p=document.createElement('p'); p.className='note'; p.textContent='No applications yet. Send someone the link above and theirs lands here.'; box.append(p); return; }
+    if(!open.length){ const p=document.createElement('p'); p.className='note'; p.textContent='Nothing waiting on you right now.'; box.append(p); }
+    open.forEach(a=>box.append(appCard(a,true)));
+    if(done.length){
+      const h=document.createElement('h3'); h.style.cssText='font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:18px 0 6px';
+      h.textContent='Already decided'; box.append(h);
+      done.slice(0,20).forEach(a=>box.append(appCard(a,false)));
+    }
+  }
+  function appCard(a,live){
+    const row=document.createElement('div'); row.className='person'+(a.status==='declined'?' off':'');
+    const name=(a.first_name+' '+a.last_name).trim();
+    const pn=document.createElement('div'); pn.className='pn'; pn.textContent=name;
+    if(!live){ const t=document.createElement('span'); t.className='tag '+(a.status==='approved'?'mgr':'off'); t.textContent=a.status==='approved'?'Approved':'Not approved'; pn.append(t); }
+    if(!a.bg_check_ok){ const t=document.createElement('span'); t.className='tag off'; t.textContent='No background check'; pn.append(t); }
+    const pe=document.createElement('div'); pe.className='pe';
+    pe.textContent=fmtPhone(a.phone)+' · '+a.email+' · applied '+fmtStamp(a.created_at);
+    row.append(pn,pe);
+
+    const more=document.createElement('div'); more.className='pay-more'; more.hidden=true;
+    const dl=document.createElement('dl'); dl.className='dl';
+    const put=(l,v)=>{ if(!v) return; const dt=document.createElement('dt'); dt.textContent=l; const dd=document.createElement('dd'); if(v instanceof Node) dd.append(v); else dd.textContent=v; dl.append(dt,dd); };
+    put('Date of birth', fmtDob(a.dob));
+    const street=[a.addr1,a.addr2].filter(Boolean).join(', ');
+    const town=[a.city,a.state,a.zip].filter(Boolean).join(' ');
+    if(street||town){
+      const full=[street,town].filter(Boolean).join(', ');
+      const mapL=document.createElement('a'); mapL.href='https://maps.apple.com/?q='+encodeURIComponent(full);
+      mapL.target='_blank'; mapL.rel='noopener'; mapL.textContent=full; put('Home address', mapL);
+    }
+    put('Background check', a.bg_check_ok?'Authorized':'NOT authorized');
+    put('Referred by', a.lead_id?personName(a.lead_id)+' (their link)':(a.referred?(a.referred_name||'An existing agent'):'Not referred'));
+    if(a.decided_at) put(a.status==='approved'?'Approved':'Declined', fmtStamp(a.decided_at)+(a.decided_by?' by '+personName(a.decided_by):''));
+    if(a.note) put('Note', a.note);
+
+    // The number stays sealed until it is asked for, and asking is recorded.
+    if(a.ssn_last4){
+      const wrap=document.createElement('span');
+      const shown=document.createElement('span'); shown.textContent='•••-••-'+a.ssn_last4+' '; wrap.append(shown);
+      const b=document.createElement('button'); b.type='button'; b.className='btn btn-ghost btn-small'; b.textContent='Show full';
+      b.onclick=async()=>{
+        b.disabled=true;
+        const {data,error}=await sb.rpc('reveal_ssn',{p_id:a.id});
+        if(error||!data){ toast(error?error.message:'Couldn’t open that.'); b.disabled=false; return; }
+        shown.textContent=data+' '; b.remove();
+        setTimeout(()=>{ shown.textContent='•••-••-'+a.ssn_last4+' '; },45000);
+      };
+      wrap.append(b); put('Social Security Number', wrap);
+    }
+    more.append(dl);
+
+    const docs=document.createElement('div'); docs.className='row-btns';
+    const doc=(label,kind,present)=>{
+      if(!present) return;
+      const b=document.createElement('button'); b.type='button'; b.className='btn btn-ghost btn-small'; b.textContent=label;
+      b.onclick=async()=>{
+        b.disabled=true;
+        // opened first, then pointed at the file — iOS blocks a window opened after an await
+        const w=window.open('','_blank');
+        try{
+          const r=await teamCall({action:'application_file',applicationId:a.id,kind:kind});
+          if(w) w.location.href=r.url; else toast('Allow pop-ups to open documents.');
+        }catch(e){ if(w) w.close(); toast(e.message); }
+        b.disabled=false;
+      };
+      docs.append(b);
+    };
+    if(a.purged_at){ const p=document.createElement('span'); p.className='lb-sub'; p.textContent='Documents deleted '+fmtStamp(a.purged_at); docs.append(p); }
+    else { doc('🪪 Government ID','id_photo',a.id_photo); doc('👤 Headshot','headshot',a.headshot); }
+    if(docs.children.length) more.append(docs);
+    if(a.status==='approved'&&a.purge_at&&!a.purged_at){
+      const p=document.createElement('p'); p.className='lb-sub'; p.style.marginTop='8px';
+      p.textContent='Documents delete themselves '+fmtLong(String(a.purge_at).slice(0,10));
+      more.append(p);
+    }
+
+    const btns=document.createElement('div'); btns.className='row-btns';
+    const look=document.createElement('button'); look.type='button'; look.className='btn btn-ghost btn-small';
+    look.textContent='Open'; look.setAttribute('aria-expanded','false');
+    look.onclick=()=>{ more.hidden=!more.hidden; look.textContent=more.hidden?'Open':'Close'; look.setAttribute('aria-expanded',String(!more.hidden)); };
+    btns.append(look);
+
+    if(live){
+      const msg=$('#appMsg');
+      const ap=document.createElement('button'); ap.type='button'; ap.className='btn btn-primary btn-small'; ap.textContent='Approve';
+      ap.onclick=async()=>{
+        const pw=prompt('Starter password for '+name+' (at least 6 characters):'); if(pw==null) return;
+        if(pw.length<6){ toast('Password needs at least 6 characters.'); return; }
+        ap.disabled=true; ap.textContent='Approving…'; tmSay(msg,'');
+        try{
+          const made=await teamCall({action:'create_for_application',applicationId:a.id,password:pw});
+          const {error}=await sb.rpc('approve_application',{p_id:a.id,p_user:made.id});
+          if(error) throw new Error(error.message);
+          const text=welcomeText(name,a.email,pw);
+          msg.className='team-msg ok'; msg.innerHTML='';
+          msg.append(name+' is on the board. Send them their sign-in:');
+          const w=document.createElement('div'); w.className='welcome'; w.textContent=text; msg.append(w);
+          const row2=document.createElement('div'); row2.className='row-btns'; row2.style.marginTop='8px';
+          const sms=document.createElement('a'); sms.className='btn btn-primary btn-small';
+          sms.href='sms:+1'+digits10(a.phone)+'?&body='+encodeURIComponent(text);
+          sms.textContent='💬 Text '+firstName(name); row2.append(sms);
+          const sh=document.createElement('button'); sh.type='button'; sh.className='btn btn-ghost btn-small';
+          sh.textContent='Share another way'; sh.onclick=()=>shareText(text); row2.append(sh);
+          msg.append(row2);
+          loadApps(); loadRecruits(); loadTeam(); loadProfiles();
+        }catch(e){ tmSay(msg,e.message,'err'); ap.disabled=false; ap.textContent='Approve'; }
+      };
+      const no=document.createElement('button'); no.type='button'; no.className='btn btn-ghost btn-small'; no.textContent='Decline';
+      no.onclick=async()=>{
+        const why=prompt('Reason (optional, kept on the record):'); if(why==null) return;
+        no.disabled=true;
+        const {error}=await sb.rpc('decline_application',{p_id:a.id,p_note:why||''});
+        if(error){ tmSay($('#appMsg'),error.message,'err'); no.disabled=false; return; }
+        toast('Declined'); loadApps();
+      };
+      btns.append(ap,no);
+    }
+    row.append(btns,more);
+    return row;
+  }
+
+  // A leader's roster, built from profiles — no need for the manager-only team listing.
+  function renderMyTeam(){
+    const box=$('#myTeamList'); if(!box) return;
+    const ids=[...(state.teamIds||[])].sort((a,b)=>agentLabel(a).localeCompare(agentLabel(b)));
+    box.innerHTML='';
+    if(!ids.length){
+      const p=document.createElement('p'); p.className='note';
+      p.textContent=state.canAnnounce?'Nobody is assigned to you. Managers set a leader for each person under Team.':'Nobody is on your team yet. Put a name forward below and an owner will approve it.';
+      box.append(p); return;
+    }
+    ids.forEach(id=>{
+      const p=(state.profiles||{})[id]||{};
+      const row=document.createElement('div'); row.className='person';
+      const pn=document.createElement('div'); pn.className='pn'; pn.textContent=agentLabel(id);
+      if(p.role&&p.role!=='agent'){ const t=document.createElement('span'); t.className='tag mgr'; t.textContent=roleLabel(p.role); pn.append(t); }
+      const open=(state.installs||[]).filter(i=>i.agentId===id&&i.status!=='installed'&&i.status!=='cancelled').length;
+      const pe=document.createElement('div'); pe.className='pe';
+      pe.textContent=open?open+(open===1?' order still open':' orders still open'):'No open orders';
+      row.append(pn,pe);
+      const btns=document.createElement('div'); btns.className='row-btns';
+      const pay=document.createElement('button'); pay.type='button'; pay.className='btn btn-ghost btn-small';
+      pay.textContent='🧾 Pay reports'; pay.onclick=()=>openPay(id); btns.append(pay);
+      row.append(btns); box.append(row);
+    });
+  }
 
   // ---------- export (managers) ----------
   let exportFile=null;
@@ -1987,7 +2427,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     navigator.serviceWorker.addEventListener('message',e=>{ const h=e.data&&e.data.hash; openHash(h); }); }
   function openHash(h){ if(!state.db) return;
     if(h&&h.indexOf('#dm-')===0){ const who=h.slice(4); if(state.profiles&&state.profiles[who]) state.dmWith=who; showTab('chat'); return; }
-    if(h==='#chat') showTab('chat'); else if(h==='#installs') showTab('installs'); else if(h==='#wireless') showTab('wireless'); else if(h==='#pay') openPay(state.meId); }
+    if(h==='#chat') showTab('chat'); else if(h==='#installs') showTab('installs'); else if(h==='#wireless') showTab('wireless'); else if(h==='#pay') openPay(state.meId); else if(h==='#team'&&(state.canAnnounce||state.isLead)) showTab('team'); }
   function b64u(str){ const pad='='.repeat((4-str.length%4)%4); const raw=atob((str+pad).replace(/-/g,'+').replace(/_/g,'/')); return Uint8Array.from([...raw].map(c=>c.charCodeAt(0))); }
   async function currentSub(){ if(!pushCapable()) return null; const reg=swReg||await navigator.serviceWorker.ready; return reg.pushManager.getSubscription(); }
   async function alertsOn(){ return pushCapable()&&Notification.permission==='granted'&&!!(await currentSub().catch(()=>null)); }
@@ -2005,7 +2445,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   async function disableAlerts(){ const sub=await currentSub(); if(!sub) return; const ep=sub.endpoint; await sub.unsubscribe().catch(()=>{}); await sb.rpc('remove_push_subscription',{p_endpoint:ep}); }
   async function refreshAlertUI(){
     const on=await alertsOn().catch(()=>false);
-    $('#alertsBtn').hidden=!state.db; $('#teamBtn').hidden=!state.canAnnounce; $('#payBtn').hidden=!state.db; $('#alertsBtn').textContent=on?'🔔 Alerts on':'🔔 Alerts';
+    $('#alertsBtn').hidden=!state.db; $('#teamBtn').hidden=!state.canAnnounce&&!state.isLead; $('#payBtn').hidden=!state.db; $('#alertsBtn').textContent=on?'🔔 Alerts on':'🔔 Alerts';
     let dismissed=false; try{ dismissed=localStorage.getItem('alertBannerX')==='1'; }catch(_){}
     $('#alertBanner').hidden=on||dismissed||!state.db||(pushCapable()&&Notification.permission==='denied');
     return on;
@@ -2047,6 +2487,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const t=document.createElement('h3'); t.textContent='You\'ll get alerts for'; sh.append(t);
     const ul=document.createElement('ul'); ul.className='al-list';
     const items=['🧾 When your pay report is ready','🎯 When you hit your weekly goal','📣 Announcements','💬 Team chat messages, and when someone @mentions you','📡 Your installs today (10 AM reminder)','🗓 Your installs for tomorrow (7 PM reminder)','✅ When someone else updates one of your orders','💰 When a manager adds a sale for you','📱 New wireless sales added for you'];
+    if(state.isLead){ items.push('📡 Your team’s installs today (10 AM reminder)'); items.push('🗓 Your team’s installs for tomorrow (7 PM reminder)'); items.push('🙋 A decision on anyone you put forward to join'); }
     if(state.canAnnounce){ items.push('💰 Every new sale, and order updates from agents (managers only)'); items.push('📊 A daily recap at 8 PM (managers only)'); }
     items.forEach(tx=>{ const li=document.createElement('li'); li.textContent=tx; ul.append(li); }); sh.append(ul);
     wrap.hidden=false; document.body.style.overflow='hidden';
@@ -2261,6 +2702,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   state.wireless=[]; state.wlines=[];
   const linesOf=id=>(state.wlines||[]).filter(l=>l.saleId===id);
   function wlCanAct(w){ return state.canAnnounce||(!!state.meId&&w.agentId===state.meId); }
+  function wlCanSee(w){ return seesFull(w&&w.agentId); }
   function phoneDigits(v){ return (v||'').replace(/\D/g,'').slice(-10); }
   function buildPhoneInputs(){
     const n=Math.max(1,Math.min(20,parseInt($('#wlLines').value||'1',10)||1));
@@ -2914,13 +3356,15 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     state.payFor=who;
     const wrap=$('#sheet'), sh=wrap.querySelector('.sheet'); sh.innerHTML='';
     const head=document.createElement('div'); head.className='sheet-head';
-    const h=document.createElement('h2'); h.id='sheetTitle'; h.textContent=master?'Master list':(state.isOwner&&who!==state.meId?agentLabel(who)+'\u2019s pay reports':'My pay reports');
+    const h=document.createElement('h2'); h.id='sheetTitle'; h.textContent=master?'Master list':(who!==state.meId?agentLabel(who)+'\u2019s pay reports':'My pay reports');
     const x=document.createElement('button'); x.className='sheet-x'; x.type='button'; x.setAttribute('aria-label','Close'); x.textContent='×'; x.onclick=closeDetail;
     head.append(h,x); sh.append(head);
     wrap.hidden=false; document.body.style.overflow='hidden'; sh.scrollTop=0;
-    if(state.isOwner){
+    // Owners can look at anyone. A team leader gets a picker limited to their own people.
+    const pickIds=state.isOwner?Object.keys(state.profiles||{}):((state.isLead&&state.teamIds.size)?myTeamIds():[]);
+    if(state.isOwner||pickIds.length>1){
       const pick=document.createElement('select'); pick.style.cssText='font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;min-height:44px;width:100%;margin-bottom:10px';
-      Object.keys(state.profiles||{}).sort((a,b)=>agentLabel(a).localeCompare(agentLabel(b))).forEach(id=>{
+      pickIds.sort((a,b)=>agentLabel(a).localeCompare(agentLabel(b))).forEach(id=>{
         const o=document.createElement('option'); o.value=id; o.textContent=agentLabel(id)+(id===state.meId?' (you)':''); pick.append(o); });
       if(state.isOwner){ const o=document.createElement('option'); o.value='__master'; o.textContent='\uD83D\uDCCB Master list \u2014 everyone'; pick.prepend(o); }
       pick.value=master?'__master':who; pick.onchange=()=>openPay(pick.value); sh.append(pick);
@@ -2930,6 +3374,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const body=document.createElement('div'); body.textContent='Loading…'; body.className='lb-sub'; sh.append(body);
     let q=sb.from('pay_report_items').select('payment_date,doc_num,customer,product,kind,outcome,risk').order('payment_date',{ascending:false}).limit(500);
     if(state.isOwner) q=q.eq('agent_id',who).eq('outcome','paid');
+    else if(state.isLead) q=q.eq('agent_id',who);
     const {data,error}=await q;
     body.innerHTML='';
     if(error){ body.textContent='Couldn\'t load pay reports. Pull down to refresh and try again.'; return; }
@@ -3003,7 +3448,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   // ---------- Team screen: grouped accordion ----------
   // Native <details> keeps the content in the DOM, so anything half-typed survives a collapse.
   const TEAM_GROUPS=[
-    ['People', [['secTeam','Team'],['secAddMate','Add a teammate'],['devices','Device management']]],
+    ['People', [['secApps','Applications'],['secMyTeam','My team'],['secPending','Waiting for approval'],['secRecruit','Put a new teammate forward'],['secTeam','Team'],['secAddMate','Add a teammate'],['devices','Device management']]],
     ['Money',  [['payImport','Import pay report'],['payouts','Payouts'],['reportNames','Pay report names']]],
     ['Setup',  [['secGoals','Weekly goals'],['secExport','Export orders']]]
   ];
@@ -3034,6 +3479,30 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       const el=document.getElementById(id); if(!el) return;
       const box=el.closest('details')||el; box.hidden=!state.isOwner;
     });
+    ['secPending','secApps'].forEach(id=>{
+      const el=document.getElementById(id); if(!el) return;
+      const box=el.closest('details')||el; box.hidden=!state.isOwner;
+    });
+    syncTeamGroups();
+  }
+  function syncTeamGroups(){
+    const host=$('#viewTeam'); if(!host) return;
+    host.querySelectorAll('.acc-group').forEach(g=>{ g.hidden=!g.querySelector('details.acc:not([hidden])'); });
+  }
+  // ⚙️ Team is a manager screen. A team leader gets two sections of it: the people on their
+  // team, and the form that puts a new name forward. Everything else stays hidden.
+  function applyRoleUi(){
+    const host=$('#viewTeam'); if(!host) return;
+    const limited=!state.canAnnounce;
+    const show={ secMyTeam:state.isLead||state.canAnnounce, secRecruit:state.isLead||state.isOwner,
+                 secPending:state.isOwner, secApps:state.isOwner };
+    host.querySelectorAll('details.acc').forEach(d=>{
+      const id=d.dataset.sec||'';
+      if(id in show) d.hidden=!show[id];
+      else if(limited) d.hidden=true;
+    });
+    applyOwnerUi();
+    if(show.secMyTeam) renderMyTeam();
   }
 
   // ---------- master commission list (owner only) ----------
@@ -3651,8 +4120,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       gateStep(null); startBoard();
     }
     async function loadProfiles(){
-      const {data}=await sb.from('profiles').select('id,full_name,role');
+      const {data}=await sb.from('profiles').select('id,full_name,role,team_lead_id');
       state.profiles={}; (data||[]).forEach(p=>state.profiles[p.id]=p);
+      refreshTeamIds();
     }
     function startBoard(){
       if(started) return; started=true;
@@ -3661,9 +4131,20 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       state.canAnnounce=(state.profiles[state.meId]||{}).role==='manager';
       loadMapAccess();
       buildTeamAccordion();
-      sb.rpc('is_owner').then(({data})=>{ state.isOwner=!!data; applyOwnerUi(); }).catch(()=>{});
-      $('#teamBtn').hidden=!state.canAnnounce; $('#payBtn').hidden=false; document.querySelector('.tabs').classList.add('five');
+      sb.rpc('is_owner').then(({data})=>{
+        state.isOwner=!!data; applyRoleUi();
+        if(state.isOwner||state.isLead){
+          loadRecruits();
+          sb.channel('rt-recruits').on('postgres_changes',{event:'*',schema:'public',table:'recruits'},()=>loadRecruits()).subscribe();
+        }
+        if(state.isOwner){
+          loadApps();
+          sb.channel('rt-apps').on('postgres_changes',{event:'*',schema:'public',table:'applications'},()=>loadApps()).subscribe();
+        }
+      }).catch(()=>{});
+      $('#teamBtn').hidden=!state.canAnnounce&&!state.isLead; $('#payBtn').hidden=false; document.querySelector('.tabs').classList.add('five');
       $('#annBtn').hidden=!state.canAnnounce; $('#composerIn').classList.toggle('admin',state.canAnnounce);
+      applyRoleUi();
       const sbtn=$('#saveBtn'); if(sbtn) sbtn.disabled=false;
       setTimeout(()=>{ syncAlerts(); openHash(location.hash); loadRisk(); loadDevices(); },0);
       sb.channel('rt-risk').on('postgres_changes',{event:'*',schema:'public',table:'order_risk'},()=>loadRisk()).subscribe();
@@ -3673,7 +4154,13 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         .on('postgres_changes',{event:'*',schema:'public',table:'agent_goals'},()=>loadSettings())
         .subscribe();
       // keep teammate names fresh as people join
-      sb.channel('rt-profiles').on('postgres_changes',{event:'*',schema:'public',table:'profiles'},async()=>{ await loadProfiles(); state.names={}; ensureNames(Object.keys(state.profiles)); if(state.tab==='chat') renderChat(); else updateBadge(); }).subscribe();
+      sb.channel('rt-profiles').on('postgres_changes',{event:'*',schema:'public',table:'profiles'},async()=>{
+        const was=state.isLead+'|'+[...state.teamIds].sort().join(',');
+        await loadProfiles(); state.names={}; ensureNames(Object.keys(state.profiles));
+        state.canAnnounce=(state.profiles[state.meId]||{}).role==='manager';
+        if(was!==state.isLead+'|'+[...state.teamIds].sort().join(',')){ applyRoleUi(); render(); }
+        if(state.tab==='chat') renderChat(); else updateBadge();
+      }).subscribe();
       ensureNames(Object.keys(state.profiles));
       document.addEventListener('visibilitychange',async()=>{ if(document.visibilityState!=='visible') return; await loadProfiles(); state.names={}; ensureNames([...Object.keys(state.profiles),...state.installs.map(i=>i.agentId)]); });
       state.db.collection('installs').onSnapshot(snap=>{

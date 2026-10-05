@@ -2256,7 +2256,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   async function loadApps(){
     if(!state.isOwner) return;
     const {data,error}=await sb.from('applications')
-      .select('id,created_at,first_name,last_name,phone,email,dob,addr1,addr2,city,state,zip,bg_check_ok,referred,referred_name,lead_id,recruit_id,ssn_last4,id_photo,headshot,status,note,decided_at,decided_by,purge_at,purged_at')
+      .select('id,created_at,first_name,last_name,phone,email,dob,addr1,addr2,city,state,zip,bg_check_ok,referred,referred_name,referred_by,lead_id,recruit_id,ssn_last4,id_photo,headshot,status,note,decided_at,decided_by,purge_at,purged_at')
       .order('created_at',{ascending:false}).limit(100);
     if(error) return;
     state.apps=data||[]; renderApps();
@@ -2299,7 +2299,11 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       mapL.target='_blank'; mapL.rel='noopener'; mapL.textContent=full; put('Home address', mapL);
     }
     put('Background check', a.bg_check_ok?'Authorized':'NOT authorized');
-    put('Referred by', a.lead_id?personName(a.lead_id)+' (their link)':(a.referred?(a.referred_name||'An existing agent'):'Not referred'));
+    put('Referred by', a.referred_by
+      ? personName(a.referred_by)+(a.lead_id===a.referred_by&&a.recruit_id?' (their link)':'')
+      : a.lead_id ? personName(a.lead_id)+' (their link)'
+      : a.referred ? (a.referred_name||'An existing agent')
+      : 'Not referred');
     if(a.decided_at) put(a.status==='approved'?'Approved':'Declined', fmtStamp(a.decided_at)+(a.decided_by?' by '+personName(a.decided_by):''));
     if(a.note) put('Note', a.note);
 

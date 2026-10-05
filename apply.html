@@ -44,7 +44,7 @@ button{cursor:pointer}
 /* one question fills the screen; the buttons sit at the bottom where a thumb is */
 .shell{
   min-height:100%;max-width:620px;margin:0 auto;
-  padding:calc(env(safe-area-inset-top,0px) + 40px) 20px calc(env(safe-area-inset-bottom,0px) + 112px);
+  padding:calc(env(safe-area-inset-top,0px) + 36px) 20px calc(env(safe-area-inset-bottom,0px) + 40px);
   display:flex;flex-direction:column;justify-content:center;
 }
 .step{display:none;animation:rise .28s ease both}
@@ -101,13 +101,8 @@ dl.review dd{margin:0;overflow-wrap:anywhere}
 
 /* footer controls */
 .foot[hidden]{display:none}
-.foot{
-  position:fixed;left:0;right:0;bottom:0;background:var(--bg);
-  border-top:1px solid var(--line);
-  padding:12px 20px calc(env(safe-area-inset-bottom,0px) + 12px);
-  display:flex;gap:10px;justify-content:center;
-}
-.foot .inner{max-width:620px;width:100%;display:flex;gap:10px}
+.foot{display:flex;margin-top:26px}
+.foot .inner{width:100%;display:flex;gap:10px}
 .btn{border:0;border-radius:12px;padding:15px 22px;min-height:54px;font-weight:600;font-size:1.02rem}
 .btn-primary{background:var(--signal);color:var(--signal-ink);flex:1}
 .btn-primary[disabled]{opacity:.5;cursor:default}
@@ -158,8 +153,9 @@ dl.review dd{margin:0;overflow-wrap:anywhere}
   <section class="step" data-step="refname">
     <span class="num">4</span>
     <h2>Who were you referred by?</h2>
-    <p class="hint">The first and last name of the person who referred you to the job.</p>
-    <input id="fRefName" type="text" autocomplete="off" autocapitalize="words" placeholder="Type your answer here…">
+    <p class="hint" id="refHint">Pick the person who told you about the job.</p>
+    <select id="fRefPick" hidden></select>
+    <input id="fRefName" type="text" autocomplete="off" autocapitalize="words" placeholder="Their first and last name">
   </section>
 
   <section class="step" data-step="first">
@@ -247,13 +243,13 @@ dl.review dd{margin:0;overflow-wrap:anywhere}
     <p class="hint">We'll contact you shortly to help you get started. Keep an eye on your phone — the next message comes from your team lead.</p>
   </section>
 
-</div>
-
-<div class="foot" id="foot">
-  <div class="inner">
-    <button type="button" class="btn btn-back" id="back" aria-label="Back" hidden>‹</button>
-    <button type="button" class="btn btn-primary" id="next">Apply now</button>
+  <div class="foot" id="foot">
+    <div class="inner">
+      <button type="button" class="btn btn-back" id="back" aria-label="Back" hidden>‹</button>
+      <button type="button" class="btn btn-primary" id="next">Apply now</button>
+    </div>
   </div>
+
 </div>
 
 <script>
@@ -265,9 +261,45 @@ dl.review dd{margin:0;overflow-wrap:anywhere}
 
   // A team leader's text carries ?r=<recruit id>, which hangs this application on
   // the person who put them forward.
-  var referrer=(new URLSearchParams(location.search).get('r')||'').trim();
+  var referrerId=(new URLSearchParams(location.search).get('r')||'').trim();
 
   var data={ bg:null, ref:null };
+  var leaders=null, referrer=null;
+
+  // Who could have referred them. Asked for once, as soon as the page opens, so the
+  // list is ready by the time they reach that question; the typed box stays as the
+  // fallback if the list can't be fetched.
+  function loadLeaders(){
+    return fetch(FN,{method:'POST',headers:{'Content-Type':'application/json'},
+                     body:JSON.stringify({action:'leaders', r:referrerId})})
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(!j||!Array.isArray(j.leaders)) return;
+        leaders=j.leaders; referrer=j.referrer||null;
+        var sel=$('#fRefPick');
+        sel.innerHTML='';
+        var o0=document.createElement('option'); o0.value=''; o0.textContent='Choose a name\u2026'; sel.append(o0);
+        leaders.forEach(function(l){ var o=document.createElement('option'); o.value=l.id; o.textContent=l.name; sel.append(o); });
+        var oX=document.createElement('option'); oX.value='__other'; oX.textContent='Someone else \u2014 I\u2019ll type their name'; sel.append(oX);
+        sel.hidden=false;
+        $('#fRefName').hidden=true;
+        if(referrer){
+          sel.value=referrer.id;
+          if(sel.value!==referrer.id){ // they lead a team but aren't on the list
+            var o=document.createElement('option'); o.value=referrer.id; o.textContent=referrer.name;
+            sel.insertBefore(o, sel.children[1]); sel.value=referrer.id;
+          }
+          data.ref=true; data.referredBy=referrer.id; data.referredName=referrer.name;
+          $('#refHint').textContent='We filled this in from the link you were sent. Change it if that\u2019s not right.';
+        }
+        sel.addEventListener('change', function(){
+          var other=sel.value==='__other';
+          $('#fRefName').hidden=!other;
+          if(other){ $('#fRefName').value=''; setTimeout(function(){ $('#fRefName').focus(); },0); }
+        });
+      })
+      .catch(function(){});
+  }
   var slots=null;           // signed upload targets, fetched once we reach the photos
   var uploaded={};          // which of the two files made it
 
@@ -291,7 +323,7 @@ dl.review dd{margin:0;overflow-wrap:anywhere}
     clearMsg();
     if(name==='idphoto'||name==='headshot') getRef().catch(function(){});
     if(name==='review') drawReview();
-    var f=stepEl(name).querySelector('input:not([type=file])');
+    var f=stepEl(name).querySelector('input:not([type=file]):not([hidden])');
     if(f && !('ontouchstart' in window)) setTimeout(function(){ f.focus(); },60);
     window.scrollTo(0,0);
   }
@@ -321,7 +353,23 @@ dl.review dd{margin:0;overflow-wrap:anywhere}
       data.phone=p; return true;
     }
     if(name==='ref'){ if(data.ref===null){ say('Pick yes or no.'); return false; } return true; }
-    if(name==='refname'){ data.referredName=$('#fRefName').value.trim(); return true; }
+    if(name==='refname'){
+      var sel=$('#fRefPick');
+      if(!sel.hidden){
+        if(!sel.value){ say('Pick a name, or choose \u201CSomeone else\u201D.'); return false; }
+        if(sel.value==='__other'){
+          var typed=$('#fRefName').value.trim();
+          if(typed.length<2){ say('Type their name.'); return false; }
+          data.referredBy=''; data.referredName=typed;
+        } else {
+          data.referredBy=sel.value;
+          data.referredName=sel.options[sel.selectedIndex].textContent;
+        }
+      } else {
+        data.referredBy=''; data.referredName=$('#fRefName').value.trim();
+      }
+      return true;
+    }
     if(name==='first'){
       var f=$('#fFirst').value.trim();
       if(f.length<2){ say('Enter your first name.'); return false; }
@@ -458,11 +506,13 @@ dl.review dd{margin:0;overflow-wrap:anywhere}
   function send(){
     var btn=$('#next');
     var payload={
-      action:'submit', ref:(slots&&slots.ref)||'', r:referrer,
+      action:'submit', ref:(slots&&slots.ref)||'', r:referrerId,
+      referredBy:data.ref===true?(data.referredBy||''):'',
       firstName:data.firstName, lastName:data.lastName, phone:data.phone, email:data.email,
       dob:data.dob, ssn:data.ssn,
       addr1:data.addr1, addr2:data.addr2, city:data.city, state:data.state, zip:data.zip,
-      bgCheck:data.bg===true, referred:data.ref===true, referredName:data.referredName||''
+      bgCheck:data.bg===true, referred:data.ref===true,
+      referredName:data.ref===true?(data.referredName||''):''
     };
     fetch(FN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
       .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j}; }); })
@@ -489,6 +539,7 @@ dl.review dd{margin:0;overflow-wrap:anywhere}
       var b=ev.target.closest('button[data-v]'); if(!b) return;
       [].forEach.call(box.querySelectorAll('button'),function(x){ x.setAttribute('aria-pressed', String(x===b)); });
       data[key] = b.dataset.v==='yes';
+      if(key==='ref'&&data.ref!==true){ data.referredBy=''; data.referredName=''; }
       clearMsg();
       setTimeout(function(){ if(check(ORDER[at])) go(1); }, 180);
     });
@@ -498,11 +549,12 @@ dl.review dd{margin:0;overflow-wrap:anywhere}
 
   // Arriving from a team leader's text already answers "were you referred?" —
   // shown rather than skipped, so they can correct it.
-  if(referrer){
+  if(referrerId){
     data.ref=true;
     var y=document.querySelector('#pickRef button[data-v="yes"]');
     if(y) y.setAttribute('aria-pressed','true');
   }
+  loadLeaders();
 
   $('#next').addEventListener('click', function(){
     var name=ORDER[at];
@@ -510,6 +562,15 @@ dl.review dd{margin:0;overflow-wrap:anywhere}
     if(check(name)) go(1);
   });
   $('#back').addEventListener('click', function(){ go(-1); });
+
+  // Once the keyboard has animated in, make sure the OK button is on screen with the field.
+  document.addEventListener('focusin', function(e){
+    if(!/^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
+    setTimeout(function(){
+      var f=$('#foot');
+      if(f&&!f.hidden&&f.scrollIntoView) f.scrollIntoView({block:'nearest'});
+    },350);
+  });
 
   document.addEventListener('keydown', function(e){
     if(e.key!=='Enter') return;

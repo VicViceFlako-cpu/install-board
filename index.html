@@ -138,6 +138,13 @@ button{cursor:pointer}
 .team-form{display:grid;gap:10px}
 .team-form label{display:grid;gap:4px;font-size:.88rem;color:var(--muted)}
 .team-form input,.team-form select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 12px;min-height:44px}
+/* a real picker, instead of asking someone to type a word into a prompt box */
+.pick-back{position:fixed;inset:0;background:rgba(0,0,0,.45);display:grid;place-items:center;padding:20px;z-index:60}
+.pick-box{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px;max-width:420px;width:100%;box-shadow:0 18px 50px rgba(0,0,0,.3)}
+.pick-box h3{margin:0 0 6px;font-size:1.05rem}
+.pick-box .hint{margin:0 0 4px}
+.pick-sel{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px;min-height:48px;margin:12px 0 14px}
+.pick-box .row-btns{justify-content:flex-end;margin:0}
 .team-msg{font-size:.9rem;margin-top:8px}
 .team-msg.err{color:var(--danger)}
 .team-msg.ok{color:var(--done)}
@@ -2042,6 +2049,30 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     if(data&&data.error) throw new Error(data.error);
     return data;
   }
+  // Resolves to the chosen value, or null if they backed out.
+  function pickOne(opts){
+    return new Promise(resolve=>{
+      const back=document.createElement('div'); back.className='pick-back';
+      const box=document.createElement('div'); box.className='pick-box';
+      const h=document.createElement('h3'); h.textContent=opts.title; box.append(h);
+      if(opts.note){ const n=document.createElement('p'); n.className='hint'; n.textContent=opts.note; box.append(n); }
+      const sel=document.createElement('select'); sel.className='pick-sel';
+      (opts.options||[]).forEach(o=>{ const e=document.createElement('option'); e.value=o.value; e.textContent=o.label; sel.append(e); });
+      sel.value=opts.value==null?'':opts.value;
+      box.append(sel);
+      const row=document.createElement('div'); row.className='row-btns';
+      const no=document.createElement('button'); no.type='button'; no.className='btn btn-ghost btn-small'; no.textContent='Cancel';
+      const ok=document.createElement('button'); ok.type='button'; ok.className='btn btn-primary btn-small'; ok.textContent=opts.save||'Save';
+      row.append(no,ok); box.append(row); back.append(box); document.body.append(back);
+      const shut=v=>{ document.removeEventListener('keydown',esc); back.remove(); resolve(v); };
+      const esc=e=>{ if(e.key==='Escape') shut(null); };
+      document.addEventListener('keydown',esc);
+      no.onclick=()=>shut(null);
+      ok.onclick=()=>shut(sel.value);
+      back.onclick=e=>{ if(e.target===back) shut(null); };
+      setTimeout(()=>{ try{ sel.focus(); }catch(_){} },50);
+    });
+  }
   function tmSay(el,text,kind){ el.className='team-msg'+(kind?' '+kind:''); el.textContent=text; }
   function appLink(){ return location.origin+location.pathname.replace(/index\.html$/,''); }
   function welcomeText(name,email,pass){ return 'Hi '+(name||'')+'! Our team install board is live \uD83D\uDCE1\nLink: '+appLink()+'\nEmail: '+email+'\nPassword: '+pass+'\n\nOpen the link in Safari, sign in, then tap Share \u2192 Add to Home Screen so it works like an app.'; }
@@ -2080,25 +2111,29 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       });
       if(!u.isMe){
         mk('Change role',async()=>{
-          const to=prompt('Role for '+(u.name||u.email)+' \u2014 type agent, lead or manager:\n\nagent \u2014 their own orders only\nlead \u2014 also sees their team\u2019s orders, reminders and pay reports\nmanager \u2014 full access to the board and the team tools', u.role||'agent');
-          if(to==null) return;
-          const r=String(to).trim().toLowerCase();
-          if(!['agent','lead','manager'].includes(r)){ toast('Type agent, lead or manager.'); return; }
-          if(r===u.role) return;
-          if(!confirm('Make '+(u.name||u.email)+' a '+roleLabel(r).toLowerCase()+'?')) return;
-          await teamCall({action:'set_role',userId:u.id,role:r}); toast('Role updated'); loadTeam(); loadProfiles();
+          const r=await pickOne({
+            title:'Role for '+(u.name||u.email),
+            note:'Agent \u2014 their own orders only. Team leader \u2014 also sees their team\u2019s orders, reminders and pay reports. Manager \u2014 full access to the board and the team tools.',
+            options:[{value:'agent',label:'Agent'},{value:'lead',label:'Team leader'},{value:'manager',label:'Manager'}],
+            value:u.role||'agent'
+          });
+          if(r==null||r===(u.role||'agent')) return;
+          await teamCall({action:'set_role',userId:u.id,role:r});
+          toast((u.name||'They')+' is now a '+roleLabel(r).toLowerCase()); loadTeam(); loadProfiles();
         });
         mk('Reports to',async()=>{
           const leads=users.filter(x=>x.role==='lead'&&x.id!==u.id);
-          if(!leads.length){ toast('No team leaders yet. Change someone\u2019s role to lead first.'); return; }
-          const list=leads.map((x,n)=>(n+1)+'. '+(x.name||x.email)).join('\n');
-          const cur=u.teamLeadId?leads.findIndex(x=>x.id===u.teamLeadId)+1:0;
-          const pick=prompt('Who leads '+(u.name||u.email)+'?\n\n0. Nobody\n'+list, String(cur>0?cur:0));
-          if(pick==null) return;
-          const n=parseInt(pick,10);
-          if(isNaN(n)||n<0||n>leads.length){ toast('Type one of the numbers listed.'); return; }
-          await teamCall({action:'set_lead',userId:u.id,leadId:n===0?null:leads[n-1].id});
-          toast(n===0?'Leader cleared':'Now on '+(leads[n-1].name||leads[n-1].email)+'\u2019s team'); loadTeam(); loadProfiles();
+          if(!leads.length){ toast('No team leaders yet. Set someone\u2019s role to Team leader first.'); return; }
+          const who=await pickOne({
+            title:'Who leads '+(u.name||u.email)+'?',
+            options:[{value:'',label:'Nobody'}].concat(leads.map(x=>({value:x.id,label:x.name||x.email}))),
+            value:u.teamLeadId||''
+          });
+          if(who==null||who===(u.teamLeadId||'')) return;
+          await teamCall({action:'set_lead',userId:u.id,leadId:who||null});
+          const lead=leads.find(x=>x.id===who);
+          toast(who?'Now on '+((lead&&(lead.name||lead.email))||'their')+'\u2019s team':'Leader cleared');
+          loadTeam(); loadProfiles();
         });
         mk(u.active?'Deactivate':'Reactivate',async()=>{
           if(u.active&&!confirm('Deactivate '+(u.name||u.email)+'? They won\'t be able to sign in. Their orders stay credited to them, and you can reactivate them anytime.')) return;

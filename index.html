@@ -1436,8 +1436,48 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     }
     return '';
   }
+  // Copying off a phone doesn't always preserve the line breaks: some apps hand back
+  // carriage returns, some hand back Unicode separators, and some run every field into
+  // the next with nothing between them at all. So the fields are found by their labels
+  // in the raw text, and each value is whatever sits between its label and the next one.
+  // This works whether the summary arrives as 30 lines or as one.
+  const VZ_FIELDS=[
+    ['head',     /verizon\s*order\s*confirmation|order\s*summary|contact\s*summary/gi],
+    ['customer', /account\s*name/gi],
+    ['billing',  /billing\s*telephone\s*number/gi],
+    ['phone',    /mobile\s*telephone\s*number/gi],
+    ['altphone', /alternate\s*telephone\s*number/gi],
+    ['address',  /service\s*address/gi],
+    // "MON" only counts when a real order number follows, so it can't match a stray word
+    ['mon',      /MON(?=\s*[A-Z]{2}\s*\d{8,14})/g],
+    ['orderType',/order\s*type/gi],
+    ['saleDate', /order\s*date/gi],
+    ['installDate', /due\s*date/gi],
+    ['window',   /appointment\s*(?:time|window)/gi],
+    ['status',   /\bstatus\b/gi]
+  ];
+  function tidyPaste(t){
+    return String(t||'')
+      .replace(/\r\n?/g,'\n')          // Windows and old-Mac line endings
+      .replace(/[\u2028\u2029\v\f]/g,'\n')
+      .replace(/ /g,' ');
+  }
+  function fieldChunks(text){
+    const marks=[];
+    VZ_FIELDS.forEach(([key,re])=>{ re.lastIndex=0; let m; while((m=re.exec(text))) marks.push({key,at:m.index,end:m.index+m[0].length}); });
+    marks.sort((a,b)=>a.at-b.at);
+    const out={};
+    marks.forEach((mk,i)=>{
+      const stop=i+1<marks.length?marks[i+1].at:text.length;
+      const v=text.slice(mk.end,stop).replace(/^[\s:>–—-]+/,'').trim();
+      if(v&&out[mk.key]===undefined) out[mk.key]=v;
+    });
+    out.__labels=new Set(marks.map(m=>m.key)).size;
+    return out;
+  }
   function parseVerizon(text){
-    const lines=text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+    text=tidyPaste(text);
+    const lines=text.split('\n').map(l=>l.trim()).filter(Boolean);
     const low=lines.map(l=>l.toLowerCase());
     const idx=lab=>low.findIndex(l=>l===lab);
     const after=(lab,test)=>{ const i=idx(lab); if(i<0) return ''; for(let k=i+1;k<lines.length;k++){ if(isLabel(lines[k])) continue; if(!test||test(lines[k])) return lines[k]; } return ''; };
@@ -1472,6 +1512,26 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const st=lines.find(l=>/^(confirmed|pending|scheduled|completed|cancell?ed|held|in progress)$/i.test(l)); out.vzStatus=st||'';
     const iMob=idx('mobile telephone number');
     if(iMob>=0){ for(let k=iMob+1;k<lines.length;k++){ const dg=lines[k].replace(/\D/g,''); if(isLabel(lines[k])) continue; if(dg.length===10&&/^[\d\s().-]+$/.test(lines[k])){ out.phone=dg; break; } if(/[a-z]/i.test(lines[k])) break; } }
+
+    // Each value is also read as the span between its own label and the next one, which
+    // doesn't depend on line breaks at all. Where that gives a clean answer it wins, because
+    // reading by line can swallow the following label when the breaks didn't survive the copy.
+    const ch=fieldChunks(text);
+    const one=v=>String(v||'').split('\n')[0].trim();
+    const cNm=one(ch.customer);
+    if(cNm.length>1&&cNm.length<=80&&/[a-z]/i.test(cNm)&&!/\d{4,}/.test(cNm)) out.customer=cNm;
+    const cAd=one(ch.address);
+    if(cAd&&/[a-z]/i.test(cAd)&&/\d/.test(cAd)&&!/^[A-Z]{2}\d{8,14}$/.test(cAd)) out.address=cAd;
+    const cPh=(String(ch.phone||'').match(/\d[\d\s().-]{8,}\d/)||[''])[0].replace(/\D/g,'');
+    if(cPh.length===10) out.phone=cPh;
+    const cMo=String(ch.mon||'').replace(/\s+/g,'').match(/^[A-Z]{2}\d{8,14}/);
+    if(cMo) out.mon=cMo[0];
+    // The rest only fill a gap — the line reading is already careful about these.
+    if(!out.orderType&&ch.orderType) out.orderType=one(ch.orderType).slice(0,40);
+    if(!out.vzStatus&&ch.status&&/^(confirmed|pending|scheduled|completed|cancell?ed|held|in progress)$/i.test(one(ch.status))) out.vzStatus=one(ch.status);
+    if(!out.window&&!out.selfInstall&&ch.window){ const w=String(ch.window).match(WIN_RE); if(w) out.window=winPair(w); }
+    if(!out.saleDate&&ch.saleDate){ const d=findDates(String(ch.saleDate)); if(d.length) out.saleDate=d[0]; }
+    if(!out.installDate&&ch.installDate){ const d=findDates(String(ch.installDate)); if(d.length) out.installDate=d[0]; }
     return out;
   }
   const WIN_T='(\\d{1,2})(?::(\\d{2}))?\\s*([AaPp])\\.?\\s*[Mm]\\.?';

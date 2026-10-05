@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Join the team — Market Direct</title>
+<meta name="theme-color" content="#172031">
+<meta name="robots" content="noindex">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F3F5F8; --surface:#FFFFFF; --ink:#172031; --muted:#5E6878; --line:#DCE1E8;
+  --signal:#0B7A84; --signal-ink:#FFFFFF; --done:#2E8B57; --danger:#B42318;
+  box-sizing:border-box;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F1520; --surface:#18202D; --ink:#E8ECF2; --muted:#9AA4B3; --line:#2A3444;
+    --signal:#23A6B0; --signal-ink:#06161A; --done:#4CB67C; --danger:#F0786B;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F1520; --surface:#18202D; --ink:#E8ECF2; --muted:#9AA4B3; --line:#2A3444;
+  --signal:#23A6B0; --signal-ink:#06161A; --done:#4CB67C; --danger:#F0786B;
+}
+*,*::before,*::after{box-sizing:inherit}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.45 Barlow,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--signal);outline-offset:2px}
+
+/* progress */
+#bar{position:fixed;top:0;left:0;right:0;height:4px;background:transparent;z-index:5}
+#bar i{display:block;height:100%;width:0;background:var(--signal);transition:width .35s ease}
+
+/* one question fills the screen; the buttons sit at the bottom where a thumb is */
+.shell{
+  min-height:100%;max-width:620px;margin:0 auto;
+  padding:calc(env(safe-area-inset-top,0px) + 40px) 20px calc(env(safe-area-inset-bottom,0px) + 112px);
+  display:flex;flex-direction:column;justify-content:center;
+}
+.step{display:none;animation:rise .28s ease both}
+.step.on{display:block}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+.num{
+  display:inline-block;background:var(--signal);color:var(--signal-ink);
+  font-weight:700;font-size:.78rem;border-radius:6px;padding:2px 8px;margin-bottom:14px;
+}
+h1{font:700 2.3rem/1.08 "Barlow Condensed","Arial Narrow",sans-serif;margin:0 0 10px;letter-spacing:.01em}
+h2{font:600 1.45rem/1.25 Barlow,sans-serif;margin:0 0 6px}
+.hint{color:var(--muted);margin:0 0 20px}
+.req{color:var(--signal);font-weight:600}
+
+input[type=text],input[type=tel],input[type=email],input[type=date],select{
+  width:100%;background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  padding:14px;min-height:52px;margin-bottom:12px;
+}
+input::placeholder{color:var(--muted);opacity:.7}
+label.fld{display:block;font-size:.82rem;color:var(--muted);margin:0 0 4px;font-weight:600}
+
+/* yes / no and other pick-one answers */
+.pick{display:flex;flex-direction:column;gap:10px;margin-bottom:8px}
+.pick button{
+  display:flex;align-items:center;gap:12px;text-align:left;
+  background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  padding:16px;min-height:60px;font-size:1.05rem;transition:border-color .15s,background .15s;
+}
+.pick button:hover{border-color:var(--signal)}
+.pick button[aria-pressed=true]{border-color:var(--signal);background:color-mix(in srgb,var(--signal) 10%,var(--surface))}
+.pick .key{
+  flex:0 0 28px;height:28px;display:grid;place-items:center;
+  border:1px solid var(--line);border-radius:6px;font-size:.8rem;font-weight:700;color:var(--signal);
+}
+.pick button[aria-pressed=true] .key{background:var(--signal);color:var(--signal-ink);border-color:var(--signal)}
+
+/* file drop */
+.drop{
+  display:block;border:2px dashed var(--line);border-radius:14px;background:var(--surface);
+  padding:34px 20px;text-align:center;cursor:pointer;transition:border-color .15s;
+}
+.drop:hover{border-color:var(--signal)}
+.drop b{display:block;font-size:1.05rem;margin-bottom:4px}
+.drop small{color:var(--muted)}
+.drop.ok{border-style:solid;border-color:var(--done)}
+.drop input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.shot{max-width:100%;max-height:220px;border-radius:10px;margin-top:14px;display:block}
+
+/* review */
+dl.review{margin:0 0 8px;display:grid;grid-template-columns:auto 1fr;gap:8px 16px;align-items:baseline}
+dl.review dt{color:var(--muted);font-size:.84rem;font-weight:600}
+dl.review dd{margin:0;overflow-wrap:anywhere}
+
+/* footer controls */
+.foot[hidden]{display:none}
+.foot{
+  position:fixed;left:0;right:0;bottom:0;background:var(--bg);
+  border-top:1px solid var(--line);
+  padding:12px 20px calc(env(safe-area-inset-bottom,0px) + 12px);
+  display:flex;gap:10px;justify-content:center;
+}
+.foot .inner{max-width:620px;width:100%;display:flex;gap:10px}
+.btn{border:0;border-radius:12px;padding:15px 22px;min-height:54px;font-weight:600;font-size:1.02rem}
+.btn-primary{background:var(--signal);color:var(--signal-ink);flex:1}
+.btn-primary[disabled]{opacity:.5;cursor:default}
+.btn-back{background:var(--surface);border:1px solid var(--line);color:var(--ink);flex:0 0 58px;padding:15px 0}
+.msg{min-height:20px;color:var(--danger);font-weight:600;margin:0 0 10px}
+.note{color:var(--muted);font-size:.86rem;margin:16px 0 0}
+.lock{display:inline-block;margin-right:6px}
+.spin{display:inline-block;width:15px;height:15px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px;margin-right:8px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.done-mark{font-size:3rem;line-height:1;margin-bottom:12px}
+</style>
+</head>
+<body>
+<div id="bar"><i></i></div>
+
+<div class="shell">
+
+  <section class="step on" data-step="intro">
+    <h1>So, you're interested in joining our team?</h1>
+    <p class="hint">We just need a few pieces of information to get the application process started. It takes about two minutes.</p>
+    <p class="note"><span class="lock">🔒</span>Your Social Security Number and ID are encrypted and seen only by the owner. We never sell or share your information.</p>
+  </section>
+
+  <section class="step" data-step="bg">
+    <span class="num">1</span>
+    <h2>Do you authorize JB Creative Marketing to run a criminal background check? <span class="req">*</span></h2>
+    <div class="pick" id="pickBg">
+      <button type="button" data-v="yes" aria-pressed="false"><span class="key">Y</span>Yes</button>
+      <button type="button" data-v="no" aria-pressed="false"><span class="key">N</span>No</button>
+    </div>
+  </section>
+
+  <section class="step" data-step="phone">
+    <span class="num">2</span>
+    <h2>What's your phone number? <span class="req">*</span></h2>
+    <input id="fPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(201) 555-0123">
+  </section>
+
+  <section class="step" data-step="ref">
+    <span class="num">3</span>
+    <h2>Were you referred by an existing agent? <span class="req">*</span></h2>
+    <div class="pick" id="pickRef">
+      <button type="button" data-v="yes" aria-pressed="false"><span class="key">Y</span>Yes</button>
+      <button type="button" data-v="no" aria-pressed="false"><span class="key">N</span>No</button>
+    </div>
+  </section>
+
+  <section class="step" data-step="refname">
+    <span class="num">4</span>
+    <h2>Who were you referred by?</h2>
+    <p class="hint">The first and last name of the person who referred you to the job.</p>
+    <input id="fRefName" type="text" autocomplete="off" autocapitalize="words" placeholder="Type your answer here…">
+  </section>
+
+  <section class="step" data-step="first">
+    <span class="num">5</span>
+    <h2>What's your <b>first name</b>? <span class="req">*</span></h2>
+    <input id="fFirst" type="text" autocomplete="given-name" autocapitalize="words" placeholder="Type your answer here…">
+  </section>
+
+  <section class="step" data-step="last">
+    <span class="num">6</span>
+    <h2 id="lastQ">What's your <b>last name</b>? <span class="req">*</span></h2>
+    <input id="fLast" type="text" autocomplete="family-name" autocapitalize="words" placeholder="Type your answer here…">
+  </section>
+
+  <section class="step" data-step="addr">
+    <span class="num">7</span>
+    <h2>What's your <b>home address</b>?</h2>
+    <label class="fld" for="fAddr1">Address</label>
+    <input id="fAddr1" type="text" autocomplete="address-line1" placeholder="65 Hansen Way">
+    <label class="fld" for="fAddr2">Address line 2</label>
+    <input id="fAddr2" type="text" autocomplete="address-line2" placeholder="Apartment 4">
+    <label class="fld" for="fCity">City / Town</label>
+    <input id="fCity" type="text" autocomplete="address-level2" placeholder="Bronx">
+    <label class="fld" for="fState">State</label>
+    <input id="fState" type="text" autocomplete="address-level1" placeholder="New York">
+    <label class="fld" for="fZip">Zip code</label>
+    <input id="fZip" type="text" inputmode="numeric" autocomplete="postal-code" placeholder="10451">
+  </section>
+
+  <section class="step" data-step="dob">
+    <span class="num">8</span>
+    <h2>What's your <b>date of birth</b>? <span class="req">*</span></h2>
+    <p class="hint">You must be 18 or older to apply.</p>
+    <input id="fDob" type="date">
+  </section>
+
+  <section class="step" data-step="ssn">
+    <span class="num">9</span>
+    <h2>What is your <b>Social Security Number</b>? <span class="req">*</span></h2>
+    <p class="hint">Needed for your 1099 and the background check.</p>
+    <input id="fSsn" type="text" inputmode="numeric" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="000-00-0000">
+    <p class="note"><span class="lock">🔒</span>This is encrypted the moment it's sent. Nobody but the owner can ever read it back, and every time it's opened is recorded.</p>
+  </section>
+
+  <section class="step" data-step="email">
+    <span class="num">10</span>
+    <h2 id="emailQ">What's the best <b>email address</b> for you? <span class="req">*</span></h2>
+    <p class="hint">This becomes your sign-in once you're approved.</p>
+    <input id="fEmail" type="email" inputmode="email" autocomplete="email" autocapitalize="off" placeholder="name@example.com">
+  </section>
+
+  <section class="step" data-step="idphoto">
+    <span class="num">11</span>
+    <h2>Please provide a photo of your <b>Government Issued ID</b></h2>
+    <label class="drop" id="dropId">
+      <b id="dropIdTitle">☁️ Choose file</b>
+      <small id="dropIdSub">Size limit: 10MB</small>
+      <input type="file" id="fId" accept="image/*,application/pdf">
+    </label>
+    <img class="shot" id="prevId" hidden alt="">
+  </section>
+
+  <section class="step" data-step="headshot">
+    <span class="num">12</span>
+    <h2>Please provide a <b>passport style headshot</b></h2>
+    <p class="hint">Looking straight ahead with shoulders square and no headgear — no hat, scarf or durag.</p>
+    <label class="drop" id="dropHs">
+      <b id="dropHsTitle">☁️ Choose file</b>
+      <small id="dropHsSub">Size limit: 10MB</small>
+      <input type="file" id="fHs" accept="image/*">
+    </label>
+    <img class="shot" id="prevHs" hidden alt="">
+  </section>
+
+  <section class="step" data-step="review">
+    <span class="num">13</span>
+    <h2>Does this all look right?</h2>
+    <p class="hint">Tap back to fix anything before you send it.</p>
+    <dl class="review" id="reviewList"></dl>
+  </section>
+
+  <section class="step" data-step="done">
+    <div class="done-mark">✅</div>
+    <h1>Thank you for submitting your information!</h1>
+    <p class="hint">We'll contact you shortly to help you get started. Keep an eye on your phone — the next message comes from your team lead.</p>
+  </section>
+
+</div>
+
+<div class="foot" id="foot">
+  <div class="inner">
+    <button type="button" class="btn btn-back" id="back" aria-label="Back" hidden>‹</button>
+    <button type="button" class="btn btn-primary" id="next">Apply now</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  var SUPABASE_URL='https://pnpumcslzaovmsjplxmq.supabase.co';
+  var FN=SUPABASE_URL+'/functions/v1/apply';
+  var $=function(s){ return document.querySelector(s); };
+
+  // A team leader's text carries ?r=<recruit id>, which hangs this application on
+  // the person who put them forward.
+  var referrer=(new URLSearchParams(location.search).get('r')||'').trim();
+
+  var data={ bg:null, ref:null };
+  var slots=null;           // signed upload targets, fetched once we reach the photos
+  var uploaded={};          // which of the two files made it
+
+  // The order of screens. 'refname' only appears for someone who was referred.
+  var ORDER=['intro','bg','phone','ref','refname','first','last','addr','dob','ssn','email','idphoto','headshot','review','done'];
+  var at=0;
+
+  function stepEl(name){ return document.querySelector('.step[data-step="'+name+'"]'); }
+  function skip(name){ return name==='refname' && data.ref!==true; }
+
+  function show(){
+    var name=ORDER[at];
+    [].forEach.call(document.querySelectorAll('.step'),function(s){ s.classList.toggle('on', s.dataset.step===name); });
+    $('#back').hidden = (at===0 || name==='done');
+    $('#foot').hidden = (name==='done');
+    var btn=$('#next');
+    btn.textContent = name==='intro' ? 'Apply now' : name==='review' ? 'Submit' : 'OK';
+    btn.disabled=false;
+    // the share of the way through, ignoring the intro and the thank-you
+    $('#bar i').style.width = Math.round(Math.max(0,at-1)/(ORDER.length-2)*100)+'%';
+    clearMsg();
+    if(name==='idphoto'||name==='headshot') getRef().catch(function(){});
+    if(name==='review') drawReview();
+    var f=stepEl(name).querySelector('input:not([type=file])');
+    if(f && !('ontouchstart' in window)) setTimeout(function(){ f.focus(); },60);
+    window.scrollTo(0,0);
+  }
+  function go(dir){
+    var n=at+dir;
+    while(n>0 && n<ORDER.length && skip(ORDER[n])) n+=dir;
+    if(n<0||n>=ORDER.length) return;
+    at=n; show();
+  }
+
+  function say(text){
+    var s=stepEl(ORDER[at]); if(!s) return;
+    var m=s.querySelector('.msg');
+    if(!m){ m=document.createElement('p'); m.className='msg'; s.insertBefore(m, s.querySelector('.pick,input,label.drop,dl')); }
+    m.textContent=text;
+  }
+  function clearMsg(){ [].forEach.call(document.querySelectorAll('.msg'),function(m){ m.textContent=''; }); }
+
+  var digits=function(v){ return String(v||'').replace(/\D/g,''); };
+
+  // Each screen says whether it is finished, and stashes its answer.
+  function check(name){
+    if(name==='bg'){ if(data.bg===null){ say('Pick yes or no.'); return false; } return true; }
+    if(name==='phone'){
+      var p=digits($('#fPhone').value);
+      if(p.length!==10){ say('Enter a 10-digit phone number.'); return false; }
+      data.phone=p; return true;
+    }
+    if(name==='ref'){ if(data.ref===null){ say('Pick yes or no.'); return false; } return true; }
+    if(name==='refname'){ data.referredName=$('#fRefName').value.trim(); return true; }
+    if(name==='first'){
+      var f=$('#fFirst').value.trim();
+      if(f.length<2){ say('Enter your first name.'); return false; }
+      data.firstName=f;
+      $('#lastQ').innerHTML='Thanks for that, '+esc(f)+'. What’s your <b>last name</b>? <span class="req">*</span>';
+      $('#emailQ').innerHTML='What’s the best <b>email address</b> for you, '+esc(f)+'? <span class="req">*</span>';
+      return true;
+    }
+    if(name==='last'){
+      var l=$('#fLast').value.trim();
+      if(l.length<2){ say('Enter your last name.'); return false; }
+      data.lastName=l; return true;
+    }
+    if(name==='addr'){
+      data.addr1=$('#fAddr1').value.trim(); data.addr2=$('#fAddr2').value.trim();
+      data.city=$('#fCity').value.trim(); data.state=$('#fState').value.trim(); data.zip=$('#fZip').value.trim();
+      return true;
+    }
+    if(name==='dob'){
+      var d=$('#fDob').value;
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(d)){ say('Enter your date of birth.'); return false; }
+      var yrs=(Date.now()-new Date(d+'T00:00:00').getTime())/31557600000;
+      if(yrs<18){ say('You must be 18 or older to apply.'); return false; }
+      if(yrs>100){ say('Check that date — the year looks off.'); return false; }
+      data.dob=d; return true;
+    }
+    if(name==='ssn'){
+      var s=digits($('#fSsn').value);
+      if(s.length!==9){ say('A Social Security Number is 9 digits — that one has '+s.length+'.'); return false; }
+      data.ssn=s; return true;
+    }
+    if(name==='email'){
+      var e=$('#fEmail').value.trim().toLowerCase();
+      if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)){ say('That email doesn’t look right.'); return false; }
+      data.email=e; return true;
+    }
+    if(name==='idphoto'||name==='headshot'){
+      var key=name==='idphoto'?'idPhoto':'headshot';
+      if(uploading[key]){ say('Still uploading — one moment.'); return false; }
+      return true;
+    }
+    return true;
+  }
+  function esc(s){ var d=document.createElement('span'); d.textContent=s; return d.innerHTML; }
+
+  // ---------- photographs ----------
+  // Each photo is posted to the same function the form submits to, which puts it into
+  // storage server-side. No browser ever gets write access to the bucket. The reference
+  // comes from the server, so a folder can't be written to by guessing its name.
+  var uploading={}, refP=null;
+  function getRef(){
+    if(!refP){
+      refP=fetch(FN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'slots'})})
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          if(!j||!j.ref){ refP=null; throw new Error((j&&j.error)||'unreachable'); }
+          slots=j; return j.ref;
+        })
+        .catch(function(e){ refP=null; throw e; });
+    }
+    return refP;
+  }
+  function wireFile(inputId, key, kind, dropId, titleId, subId, prevId){
+    $('#'+inputId).addEventListener('change', function(){
+      var file=this.files && this.files[0]; if(!file) return;
+      if(file.size>10*1024*1024){ say('That file is over 10MB. Try a smaller photo.'); this.value=''; return; }
+      clearMsg();
+      if(/^image\//.test(file.type)){
+        var img=$('#'+prevId); img.src=URL.createObjectURL(file); img.hidden=false;
+      }
+      $('#'+titleId).innerHTML='<span class="spin"></span>Uploading…';
+      $('#'+subId).textContent=file.name;
+      uploading[key]=true; $('#next').disabled=true;
+
+      var finish=function(err){
+        uploading[key]=false; $('#next').disabled=false;
+        if(err){
+          $('#'+titleId).textContent='☁️ Choose file';
+          $('#'+subId).textContent='Size limit: 10MB';
+          $('#'+dropId).classList.remove('ok');
+          say(err);
+        } else {
+          uploaded[key]=true;
+          $('#'+titleId).textContent='✓ Uploaded';
+          $('#'+dropId).classList.add('ok');
+        }
+      };
+
+      getRef().then(function(ref){
+        var fd=new FormData();
+        fd.append('ref', ref); fd.append('kind', kind); fd.append('file', file, file.name||kind);
+        return fetch(FN,{method:'POST',body:fd}).then(function(r){ return r.json(); });
+      }).then(function(j){
+        finish(j && j.ok ? null : ((j && j.error) || 'That upload didn’t go through. Pick the file again.'));
+      }).catch(function(){
+        finish('Couldn’t reach the server. Check your connection and pick the file again.');
+      });
+    });
+  }
+  wireFile('fId','idPhoto','id','dropId','dropIdTitle','dropIdSub','prevId');
+  wireFile('fHs','headshot','headshot','dropHs','dropHsTitle','dropHsSub','prevHs');
+
+  // ---------- review ----------
+  function drawReview(){
+    var dl=$('#reviewList'); dl.innerHTML='';
+    var add=function(label,value){
+      if(!value) return;
+      var dt=document.createElement('dt'); dt.textContent=label;
+      var dd=document.createElement('dd'); dd.textContent=value;
+      dl.append(dt,dd);
+    };
+    add('Name', data.firstName+' '+data.lastName);
+    add('Phone', data.phone ? '('+data.phone.slice(0,3)+') '+data.phone.slice(3,6)+'-'+data.phone.slice(6) : '');
+    add('Email', data.email);
+    add('Date of birth', data.dob);
+    var street=[data.addr1,data.addr2].filter(Boolean).join(', ');
+    var town=[data.city,data.state,data.zip].filter(Boolean).join(' ');
+    add('Address', [street,town].filter(Boolean).join(' · '));
+    add('SSN', data.ssn ? '•••-••-'+data.ssn.slice(-4) : '');
+    add('Background check', data.bg ? 'Authorized' : 'Not authorized');
+    add('Referred by', data.ref ? (data.referredName||'An existing agent') : 'Not referred');
+    add('Government ID', uploaded.idPhoto ? 'Uploaded' : 'Not provided');
+    add('Headshot', uploaded.headshot ? 'Uploaded' : 'Not provided');
+  }
+
+  // ---------- submit ----------
+  function submit(){
+    var btn=$('#next'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>Sending…';
+    getRef().then(send).catch(function(){
+      btn.disabled=false; btn.textContent='Submit';
+      say('Couldn’t reach the server. Check your connection and try again.');
+    });
+  }
+  function send(){
+    var btn=$('#next');
+    var payload={
+      action:'submit', ref:(slots&&slots.ref)||'', r:referrer,
+      firstName:data.firstName, lastName:data.lastName, phone:data.phone, email:data.email,
+      dob:data.dob, ssn:data.ssn,
+      addr1:data.addr1, addr2:data.addr2, city:data.city, state:data.state, zip:data.zip,
+      bgCheck:data.bg===true, referred:data.ref===true, referredName:data.referredName||''
+    };
+    fetch(FN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j}; }); })
+      .then(function(res){
+        if(!res.ok||!res.j||res.j.error){
+          btn.disabled=false; btn.textContent='Submit';
+          say((res.j&&res.j.error)||'Couldn’t send that. Try again in a moment.');
+          return;
+        }
+        // nothing sensitive stays in the page once it has gone
+        data={}; try{ $('#fSsn').value=''; }catch(e){}
+        at=ORDER.indexOf('done'); show();
+      })
+      .catch(function(){
+        btn.disabled=false; btn.textContent='Submit';
+        say('Couldn’t send that. Check your connection and try again.');
+      });
+  }
+
+  // ---------- wiring ----------
+  function pick(wrap, key){
+    var box=$(wrap);
+    box.addEventListener('click', function(ev){
+      var b=ev.target.closest('button[data-v]'); if(!b) return;
+      [].forEach.call(box.querySelectorAll('button'),function(x){ x.setAttribute('aria-pressed', String(x===b)); });
+      data[key] = b.dataset.v==='yes';
+      clearMsg();
+      setTimeout(function(){ if(check(ORDER[at])) go(1); }, 180);
+    });
+  }
+  pick('#pickBg','bg');
+  pick('#pickRef','ref');
+
+  // Arriving from a team leader's text already answers "were you referred?" —
+  // shown rather than skipped, so they can correct it.
+  if(referrer){
+    data.ref=true;
+    var y=document.querySelector('#pickRef button[data-v="yes"]');
+    if(y) y.setAttribute('aria-pressed','true');
+  }
+
+  $('#next').addEventListener('click', function(){
+    var name=ORDER[at];
+    if(name==='review'){ if(check(name)) submit(); return; }
+    if(check(name)) go(1);
+  });
+  $('#back').addEventListener('click', function(){ go(-1); });
+
+  document.addEventListener('keydown', function(e){
+    if(e.key!=='Enter') return;
+    var t=e.target;
+    if(t && t.tagName==='BUTTON') return;
+    e.preventDefault();
+    $('#next').click();
+  });
+
+  // live formatting that doesn't fight the keyboard
+  $('#fSsn').addEventListener('input', function(){
+    var d=digits(this.value).slice(0,9);
+    this.value = d.length>5 ? d.slice(0,3)+'-'+d.slice(3,5)+'-'+d.slice(5)
+               : d.length>3 ? d.slice(0,3)+'-'+d.slice(3)
+               : d;
+  });
+  $('#fPhone').addEventListener('input', function(){
+    var d=digits(this.value).slice(0,10);
+    this.value = d.length>6 ? '('+d.slice(0,3)+') '+d.slice(3,6)+'-'+d.slice(6)
+               : d.length>3 ? '('+d.slice(0,3)+') '+d.slice(3)
+               : d;
+  });
+
+  show();
+})();
+</script>
+</body>
+</html>

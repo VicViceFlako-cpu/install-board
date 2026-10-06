@@ -543,7 +543,7 @@ body.on-chat .wrap{padding-bottom:140px}
     <button class="tab" role="tab" id="tabWireless" aria-selected="false">Wireless</button>
     <button class="tab" role="tab" id="tabChat" aria-selected="false">Chat<span id="unread" class="badge" hidden></span></button>
     <button class="tab" role="tab" id="tabLeaders" aria-selected="false">Leaders</button>
-    <button class="tab" role="tab" id="tabMap" aria-selected="false">2 months free map</button>
+    <button class="tab" role="tab" id="tabMap" aria-selected="false">Door-to-door map</button>
     <a class="tab tab-link" id="tabPortal" href="https://www22.verizon.com/CoFEE/Content/PreOrderingD2D/SSOLogin/Login.aspx" target="_blank" rel="noopener">Optix ↗</a>
   </nav>
 
@@ -735,7 +735,7 @@ body.on-chat .wrap{padding-bottom:140px}
     <div id="tLocked" class="t-locked" hidden></div>
     <div id="tInner">
     <div id="tStats" class="t-stats"></div>
-    <div class="t-mapwrap"><div id="tMap" class="t-map" aria-label="Map of promo buildings"></div>
+    <div class="t-mapwrap"><div id="tMap" class="t-map" aria-label="Map of door-to-door buildings"></div>
       <div class="t-mapbtns"><button type="button" id="tMe" class="btn btn-ghost btn-small">📍 Near me</button><button type="button" id="tAll" class="btn btn-ghost btn-small">Show all</button></div>
     </div>
     <div id="tLegend" class="t-legend"></div>
@@ -3973,7 +3973,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         +'<button type="button" class="btn btn-ghost btn-small" data-show="'+z.code+'">Show on map</button></div></div>'; });
     const ids=[...new Set([...T.v.map(v=>v.agent_id),...T.z.map(z=>z.agent_id)].filter(Boolean))];
     const rows=ids.map(id=>{ const m=T.v.filter(v=>v.agent_id===id); return {id,today:m.filter(v=>tIsToday(v.created_at)).length,all:m.length,bld:new Set(m.map(v=>v.building_id)).size,sold:m.filter(v=>v.outcome==='sold').length}; }).sort((a,b)=>b.all-a.all);
-    h+='<div class="t-card"><h3>Agents on this promo</h3>'+(rows.length?'<div style="overflow-x:auto"><table class="t-table"><thead><tr><th>Agent</th><th class="n">Today</th><th class="n">Visits</th><th class="n">Bldgs</th><th class="n">Sold</th></tr></thead><tbody>'
+    h+='<div class="t-card"><h3>Agents</h3>'+(rows.length?'<div style="overflow-x:auto"><table class="t-table"><thead><tr><th>Agent</th><th class="n">Today</th><th class="n">Visits</th><th class="n">Bldgs</th><th class="n">Sold</th></tr></thead><tbody>'
       +rows.map(r=>'<tr><td>'+tEsc(tName(r.id))+'</td><td class="n">'+r.today+'</td><td class="n">'+r.all+'</td><td class="n">'+r.bld+'</td><td class="n">'+r.sold+'</td></tr>').join('')+'</tbody></table></div>':'<p class="t-meta" style="margin:0">No visits logged yet.</p>')+'</div>';
     h+='<div class="t-card"><h3>Team update</h3><p class="t-meta" style="margin:0 0 8px">Copies today\'s coverage as text you can paste into the chat.</p><button type="button" id="tCopy" class="btn btn-ghost btn-small">Copy update</button></div>';
     if(mgr) h+='<div class="t-card"><h3>Route</h3><p class="t-meta" style="margin:0 0 8px">Buildings are numbered in the shortest order to visit them all. After adding or removing buildings, re-plan so the numbers stay in order.</p><button type="button" id="tReplan" class="btn btn-ghost btn-small">Re-plan route</button></div>';
@@ -3990,7 +3990,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   function tReport(){
     const d=new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
     const worked=T.b.filter(b=>tStatus(b.id)!=='none').length, today=T.v.filter(v=>tIsToday(v.created_at));
-    let t='Promo buildings — '+d+'\nWorked '+worked+'/'+T.b.length+' · '+today.length+' visits today · '+today.filter(v=>v.outcome==='sold').length+' sold today\n';
+    let t='Door-to-door buildings — '+d+'\nWorked '+worked+'/'+T.b.length+' · '+today.length+' visits today · '+today.filter(v=>v.outcome==='sold').length+' sold today\n';
     T.z.forEach(z=>{ const l=T.b.filter(b=>b.zone===z.code); if(!l.length) return; t+='\n'+z.name+(z.agent_id?' ('+tName(z.agent_id)+')':'')+': '+l.filter(b=>tStatus(b.id)!=='none').length+'/'+l.length;
       const todo=l.filter(b=>tStatus(b.id)==='none').map(b=>b.address); if(todo.length) t+='\n  Still to hit: '+todo.join(', '); });
     const cb=T.b.filter(b=>tStatus(b.id)==='callback'); if(cb.length) t+='\n\nCallbacks: '+cb.map(b=>b.address).join(', ');

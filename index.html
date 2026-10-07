@@ -3878,29 +3878,36 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   function tAgentOpts(sel){ return Object.values(state.profiles||{}).filter(p=>p.full_name).sort((a,b)=>a.full_name.localeCompare(b.full_name)).map(p=>'<option value="'+p.id+'"'+(p.id===sel?' selected':'')+'>'+tEsc(p.full_name)+'</option>').join(''); }
   const tName=id=>personName(id).replace(/ \(you\)$/,'');
 
-  // open-path route: best of nearest-neighbour from every start, improved with 2-opt + or-opt
+  // open-path route: nearest-neighbour starts, improved with 2-opt and or-opt (fast enough for a few hundred stops)
   function tRoute(pts){
     const n=pts.length; if(n<3) return pts.map((_,i)=>i);
     const R=6371000,r=x=>x*Math.PI/180;
     const D=pts.map(a=>pts.map(b=>{const dl=r(b.lat-a.lat),dn=r(b.lng-a.lng);const h=Math.sin(dl/2)**2+Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h));}));
+    const d=(x,y)=>(x<0||y<0)?0:D[x][y];
     const len=p=>{let s=0;for(let i=1;i<p.length;i++)s+=D[p[i-1]][p[i]];return s;};
-    function improve(p){ let better=true;
-      while(better){ better=false;
-        for(let i=0;i<n-1;i++) for(let k=i+1;k<n;k++){ // 2-opt on open path (reverse p[i..k])
-          const a=i>0?p[i-1]:-1, b=p[i], c=p[k], d=k<n-1?p[k+1]:-1;
-          const before=(a<0?0:D[a][b])+(d<0?0:D[c][d]), after=(a<0?0:D[a][c])+(d<0?0:D[b][d]);
-          if(after+1e-6<before){ p.splice(i,k-i+1,...p.slice(i,k+1).reverse()); better=true; } }
-        for(let s=1;s<=3;s++) for(let i=0;i+s<=n;i++){ // or-opt: move segment of length s
-          const seg=p.slice(i,i+s), rest=p.slice(0,i).concat(p.slice(i+s)); const base=len(p);
+    function improve(p){
+      for(let pass=0;pass<200;pass++){ let moved=false;
+        for(let i=0;i<n-1;i++) for(let k=i+1;k<n;k++){
+          const a=i>0?p[i-1]:-1,b=p[i],c=p[k],e=k<n-1?p[k+1]:-1;
+          if(d(a,c)+d(b,e)+1e-6<d(a,b)+d(c,e)){ let x=i,y=k; while(x<y){const t=p[x];p[x]=p[y];p[y]=t;x++;y--;} moved=true; } }
+        for(let s=1;s<=3;s++) for(let i=0;i+s<=n;i++){
+          const seg=p.slice(i,i+s), a=i>0?p[i-1]:-1, b=i+s<n?p[i+s]:-1;
+          const gain=d(a,seg[0])+d(seg[s-1],b)-d(a,b);
+          const rest=p.slice(0,i).concat(p.slice(i+s)); let best=1e-6,bj=-1,brev=false;
           for(let j=0;j<=rest.length;j++){ if(j===i) continue;
-            for(const sg of [seg,seg.slice().reverse()]){ const q=rest.slice(0,j).concat(sg,rest.slice(j)); if(len(q)+1e-6<base){ p.splice(0,n,...q); better=true; break; } }
-            if(better) break; }
-          if(better) break; }
-      } return p; }
+            const c=j>0?rest[j-1]:-1, e=j<rest.length?rest[j]:-1, base=d(c,e);
+            const f=d(c,seg[0])+d(seg[s-1],e)-base, g=d(c,seg[s-1])+d(seg[0],e)-base;
+            if(gain-f>best){best=gain-f;bj=j;brev=false;} if(gain-g>best){best=gain-g;bj=j;brev=true;} }
+          if(bj>=0){ const sg=brev?seg.slice().reverse():seg; const q=rest.slice(0,bj).concat(sg,rest.slice(bj)); for(let t=0;t<n;t++)p[t]=q[t]; moved=true; } }
+        if(!moved) break; }
+      return p; }
+    const starts=[];
+    for(let s=0;s<n;s++){ const used=new Uint8Array(n),p=[s];used[s]=1;
+      while(p.length<n){ const l=p[p.length-1]; let m=-1,md=Infinity; for(let j=0;j<n;j++) if(!used[j]&&D[l][j]<md){md=D[l][j];m=j;} p.push(m);used[m]=1; }
+      starts.push(p); }
+    starts.sort((x,y)=>len(x)-len(y));
     let best=null,bl=Infinity;
-    for(let s=0;s<n;s++){ const used=new Set([s]),p=[s];
-      while(p.length<n){ const l=p[p.length-1]; let m=-1,md=Infinity; for(let j=0;j<n;j++) if(!used.has(j)&&D[l][j]<md){md=D[l][j];m=j;} p.push(m);used.add(m); }
-      improve(p); const L=len(p); if(L<bl){bl=L;best=p.slice();} }
+    for(const p of starts.slice(0,Math.min(n,12))){ improve(p); const L=len(p); if(L<bl){bl=L;best=p.slice();} }
     return best;
   }
   let tTok=0, tTimer=null;

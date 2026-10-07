@@ -462,6 +462,7 @@ body.on-chat .wrap{padding-bottom:140px}
 .t-pin.sel{outline:3px solid var(--signal);outline-offset:2px}
 .t-me{width:16px;height:16px;border-radius:50%;background:#1E7BF2;border:3px solid #fff;box-shadow:0 0 0 6px rgba(30,123,242,.25)}
 .t-legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:.8rem;color:var(--muted);margin:0 0 14px}
+.t-outwrap{margin:-6px 0 14px}
 .t-dot{width:11px;height:11px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:-1px;flex:none}
 .t-dot.s-none{border:2px solid var(--t-none)}
 .t-dot.s-noanswer{background:var(--t-noanswer)}.t-dot.s-notint{background:var(--t-notint)}.t-dot.s-callback{background:var(--t-callback)}.t-dot.s-sold{background:var(--t-sold)}.t-dot.s-noaccess{background:var(--t-noaccess)}
@@ -739,6 +740,7 @@ body.on-chat .wrap{padding-bottom:140px}
       <div class="t-mapbtns"><button type="button" id="tMe" class="btn btn-ghost btn-small">📍 Near me</button><button type="button" id="tAll" class="btn btn-ghost btn-small">Show all</button></div>
     </div>
     <div id="tLegend" class="t-legend"></div>
+    <div id="tOutWrap" class="t-outwrap" hidden><button type="button" id="tOut" class="t-chip" aria-pressed="false">Show outside the Bronx</button></div>
     <div class="t-seg" id="tSeg" role="group" aria-label="Show"><button type="button" data-v="list" aria-pressed="true">Buildings</button><button type="button" data-v="turf" aria-pressed="false">Turf &amp; agents</button></div>
     <div id="tPanel"><p class="status">Loading the territory…</p></div>
     </div>
@@ -3866,10 +3868,15 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
   // ---------- territory map ----------
   const T_OUT={noanswer:'No answer',notint:'Not interested',callback:'Callback',sold:'Sold',noaccess:"Couldn't get in"};
-  const T={b:[],z:[],v:[],num:{},line:null,map:null,layer:null,me:null,tiles:null,view:'list',filter:'all',sel:null,oc:null,loaded:false};
+  const T={showOut:false,b:[],z:[],v:[],num:{},line:null,map:null,layer:null,me:null,tiles:null,view:'list',filter:'all',sel:null,oc:null,loaded:false};
   const tEsc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const tIsToday=t=>new Date(t).toDateString()===new Date().toDateString();
   function tAgo(t){ const m=Math.round((Date.now()-new Date(t))/60000); if(m<1) return 'just now'; if(m<60) return m+'m ago'; const h=Math.round(m/60); if(h<24) return h+'h ago'; return Math.round(h/24)+'d ago'; }
+  try{ T.showOut=localStorage.getItem('tShowOut')==='1'; }catch(_){}
+  const tVis=()=>T.b.filter(b=>b.zone!=='O'||T.showOut);
+  const tOutCount=()=>T.b.filter(b=>b.zone==='O').length;
+  const tCity=b=>b.city||'Bronx';
+  function tSetOut(on){ T.showOut=on; try{ localStorage.setItem('tShowOut',on?'1':'0'); }catch(_){} T.fitted=false; renderTerritory(); if(T.map){ tFitAll(); T.fitted=true; } }
   const tVisits=id=>T.v.filter(v=>v.building_id===id);
   const tStatus=id=>{ const v=tVisits(id); return v.length?v[0].outcome:'none'; };
   const tZone=code=>T.z.find(z=>z.code===code);
@@ -3938,18 +3945,20 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   function renderTerritory(){
     if(!T.loaded) return;
     tRenderStats(); tDrawMarkers();
-    if(T.map&&!T.fitted&&T.b.length&&state.tab==='map'){ tFitAll(); T.fitted=true; }
+    if(T.map&&!T.fitted&&tVis().length&&state.tab==='map'){ tFitAll(); T.fitted=true; }
     if(T.view==='list') tRenderList(); else tRenderTurf();
     const sh=$('#sheet .sheet .t-sheet');
     if(sh&&!$('#sheet').hidden) tOpen(+sh.dataset.id,true);
   }
   function tRenderStats(){
-    const worked=T.b.filter(b=>tStatus(b.id)!=='none').length;
-    const today=T.v.filter(v=>tIsToday(v.created_at)).length;
-    const sold=T.v.filter(v=>v.outcome==='sold').length;
-    const cb=T.b.filter(b=>tStatus(b.id)==='callback').length;
-    $('#tStats').innerHTML=[['Buildings worked',worked+'<small> / '+T.b.length+'</small>'],['Visits today',today],['Sales logged',sold],['Open callbacks',cb]]
+    const V=tVis(), vid=new Set(V.map(b=>b.id));
+    const worked=V.filter(b=>tStatus(b.id)!=='none').length;
+    const today=T.v.filter(v=>vid.has(v.building_id)&&tIsToday(v.created_at)).length;
+    const sold=T.v.filter(v=>vid.has(v.building_id)&&v.outcome==='sold').length;
+    const cb=V.filter(b=>tStatus(b.id)==='callback').length;
+    $('#tStats').innerHTML=[['Buildings worked',worked+'<small> / '+V.length+'</small>'],['Visits today',today],['Sales logged',sold],['Open callbacks',cb]]
       .map(([k,v])=>'<div class="t-stat"><div class="k">'+k+'</div><div class="v">'+v+'</div></div>').join('');
+    const oc=tOutCount(); $('#tOutWrap').hidden=!oc; $('#tOut').setAttribute('aria-pressed',T.showOut); $('#tOut').textContent=(T.showOut?'Hide':'Show')+' outside the Bronx ('+oc+')';
     $('#tLegend').innerHTML='<span><i class="t-dot s-none"></i>Not visited</span>'+Object.entries(T_OUT).map(([k,l])=>'<span><i class="t-dot s-'+k+'"></i>'+l+'</span>').join('');
   }
   function tPill(o){ return o==='none'?'<span class="t-pill" style="color:var(--t-none)">Not visited</span>':'<span class="t-pill" style="color:var(--t-'+o+')">'+T_OUT[o]+'</span>'; }
@@ -3958,13 +3967,14 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     let h='<div class="t-filters">'+F.map(([k,l])=>'<button type="button" class="t-chip" data-f="'+k+'" aria-pressed="'+(T.filter===k)+'">'+l+'</button>').join('')+'</div>';
     let any=false;
     T.z.forEach(z=>{
+      if(z.code==='O'&&!T.showOut) return;
       const list=T.b.filter(b=>b.zone===z.code).filter(b=>{ const o=tStatus(b.id);
         if(T.filter==='none') return o==='none'; if(T.filter==='callback') return o==='callback';
         if(T.filter==='sold') return tVisits(b.id).some(v=>v.outcome==='sold'); if(T.filter==='mine') return z.agent_id===state.meId; return true; });
       if(!list.length) return; any=true;
       h+='<h3 class="t-zh">'+tEsc(z.name)+'<span>'+(z.agent_id?tEsc(tName(z.agent_id)):'Open turf')+'</span></h3>';
       list.forEach(b=>{ const v=tVisits(b.id), o=v.length?v[0].outcome:'none';
-        h+='<button type="button" class="t-row" data-id="'+b.id+'"><span class="t-pin s-'+o+'">'+T.num[b.id]+'</span><span style="min-width:0"><div class="t-addr">'+tEsc(b.address)+'</div><div class="t-meta">'+(v.length?tEsc(tName(v[0].agent_id))+' · '+tAgo(v[0].created_at)+' · '+v.length+' visit'+(v.length>1?'s':''):'Bronx '+tEsc(b.zip))+'</div></span>'+tPill(o)+'</button>'; });
+        h+='<button type="button" class="t-row" data-id="'+b.id+'"><span class="t-pin s-'+o+'">'+T.num[b.id]+'</span><span style="min-width:0"><div class="t-addr">'+tEsc(b.address)+'</div><div class="t-meta">'+(v.length?tEsc(tName(v[0].agent_id))+' · '+tAgo(v[0].created_at)+' · '+v.length+' visit'+(v.length>1?'s':''):tEsc(tCity(b)+' '+b.zip))+'</div></span>'+tPill(o)+'</button>'; });
     });
     if(!any) h+='<p class="empty">'+(T.filter==='mine'?'No turf is assigned to you yet. A manager can assign it on the Turf tab.':'No buildings match this filter.')+'</p>';
     const p=$('#tPanel'); p.innerHTML=h;
@@ -3990,22 +4000,25 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       const z=tZone(s.dataset.z); const {error}=await sb.from('territory_zones').update({agent_id:s.value||null,updated_at:new Date().toISOString()}).eq('code',s.dataset.z);
       if(error){ toast('Couldn\'t save that. Try again.'); tRenderTurf(); return; }
       z.agent_id=s.value||null; renderTerritory(); toast(s.value?z.name+' assigned to '+tName(s.value):z.name+' is open turf now'); });
-    p.querySelectorAll('[data-show]').forEach(b=>b.onclick=()=>{ const l=T.b.filter(x=>x.zone===b.dataset.show); if(T.map&&l.length){ T.map.fitBounds(L.latLngBounds(l.map(x=>[x.lat,x.lng])),{padding:[40,40],maxZoom:17}); } $('#tMap').scrollIntoView({behavior:'smooth',block:'center'}); });
+    p.querySelectorAll('[data-show]').forEach(b=>b.onclick=()=>{ if(b.dataset.show==='O'&&!T.showOut) tSetOut(true); const l=T.b.filter(x=>x.zone===b.dataset.show); if(T.map&&l.length){ T.map.fitBounds(L.latLngBounds(l.map(x=>[x.lat,x.lng])),{padding:[40,40],maxZoom:17}); } $('#tMap').scrollIntoView({behavior:'smooth',block:'center'}); });
     $('#tCopy').onclick=()=>{ const t=tReport(); if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(()=>toast('Update copied'),()=>toast('Couldn\'t copy on this device')); else toast('Couldn\'t copy on this device'); };
     if(mgr){ $('#tNewBtn').onclick=tAddBuilding; $('#tReplan').onclick=tReplan; }
   }
   function tReport(){
     const d=new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
-    const worked=T.b.filter(b=>tStatus(b.id)!=='none').length, today=T.v.filter(v=>tIsToday(v.created_at));
-    let t='Door-to-door buildings — '+d+'\nWorked '+worked+'/'+T.b.length+' · '+today.length+' visits today · '+today.filter(v=>v.outcome==='sold').length+' sold today\n';
-    T.z.forEach(z=>{ const l=T.b.filter(b=>b.zone===z.code); if(!l.length) return; t+='\n'+z.name+(z.agent_id?' ('+tName(z.agent_id)+')':'')+': '+l.filter(b=>tStatus(b.id)!=='none').length+'/'+l.length;
+    const V=tVis(); const worked=V.filter(b=>tStatus(b.id)!=='none').length, today=T.v.filter(v=>tIsToday(v.created_at));
+    let t='Door-to-door buildings — '+d+'\nWorked '+worked+'/'+V.length+' · '+today.length+' visits today · '+today.filter(v=>v.outcome==='sold').length+' sold today\n';
+    T.z.forEach(z=>{ const l=V.filter(b=>b.zone===z.code); if(!l.length) return; t+='\n'+z.name+(z.agent_id?' ('+tName(z.agent_id)+')':'')+': '+l.filter(b=>tStatus(b.id)!=='none').length+'/'+l.length;
       const todo=l.filter(b=>tStatus(b.id)==='none').map(b=>b.address); if(todo.length) t+='\n  Still to hit: '+todo.join(', '); });
-    const cb=T.b.filter(b=>tStatus(b.id)==='callback'); if(cb.length) t+='\n\nCallbacks: '+cb.map(b=>b.address).join(', ');
+    const cb=V.filter(b=>tStatus(b.id)==='callback'); if(cb.length) t+='\n\nCallbacks: '+cb.map(b=>b.address).join(', ');
     return t;
   }
   async function tReplan(){
     const btn=$('#tReplan'); btn.disabled=true; btn.textContent='Planning…';
-    let order=tRoute(T.b); if(order.length>1&&(T.b[order[order.length-1]].route_order??1e6)<(T.b[order[0]].route_order??1e6)) order=order.reverse(); const res=await Promise.all(order.map((idx,k)=>sb.from('territory_buildings').update({route_order:k+1}).eq('id',T.b[idx].id)));
+    const orient=(list,o)=>{ if(o.length>1&&(list[o[o.length-1]].route_order??1e6)<(list[o[0]].route_order??1e6)) o.reverse(); return o.map(k=>list[k]); };
+    const inB=T.b.filter(b=>b.zone!=='O'), out=T.b.filter(b=>b.zone==='O');
+    const seq=orient(inB,tRoute(inB)).concat(orient(out,tRoute(out)));
+    const res=await Promise.all(seq.map((b,k)=>sb.from('territory_buildings').update({route_order:k+1}).eq('id',b.id)));
     btn.disabled=false; btn.textContent='Re-plan route';
     if(res.some(r=>r.error)){ toast('Couldn\'t save the new route. Try again.'); return; }
     toast('Route re-planned'); loadTerritory();
@@ -4015,10 +4028,11 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     if(!addr||!/^\d{5}$/.test(zip)){ toast('Enter the street address and a 5-digit ZIP.'); return; }
     btn.disabled=true; btn.textContent='Finding…';
     try{
-      const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=us&q='+encodeURIComponent(addr+', NY '+zip));
+      const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&countrycodes=us&q='+encodeURIComponent(addr+' '+zip));
       const j=await r.json(); const hit=j&&j[0];
       if(!hit){ toast('Couldn\'t find that address. Check the spelling, e.g. "Ave" or "St".'); return; }
-      const {error}=await sb.from('territory_buildings').insert({address:addr,zip,lat:+hit.lat,lng:+hit.lon,zone});
+      const a=hit.address||{}; const city=zone==='O'?(a.city||a.town||a.village||a.suburb||''):'Bronx';
+      const {error}=await sb.from('territory_buildings').insert({address:addr,zip,city,lat:+hit.lat,lng:+hit.lon,zone});
       if(error){ toast(/duplicate/i.test(error.message)?'That building is already on the list.':'Couldn\'t add it. Try again.'); return; }
       toast(addr+' added to the map'); $('#tNewAddr').value=''; $('#tNewZip').value=''; loadTerritory();
     }catch(_){ toast('Couldn\'t reach the map service. Try again.'); }
@@ -4037,11 +4051,11 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     tSetTiles(); const mq=window.matchMedia('(prefers-color-scheme: dark)'); if(mq.addEventListener) mq.addEventListener('change',tSetTiles);
     T.layer=L.layerGroup().addTo(T.map); tDrawMarkers(); return true;
   }
-  function tFitAll(){ if(T.map&&T.b.length) T.map.fitBounds(L.latLngBounds(T.b.map(b=>[b.lat,b.lng])),{padding:[30,30]}); }
+  function tFitAll(){ const V=tVis(); if(T.map&&V.length) T.map.fitBounds(L.latLngBounds(V.map(b=>[b.lat,b.lng])),{padding:[30,30]}); }
   function tDrawMarkers(){
     if(!T.map) return; T.layer.clearLayers();
-    if(T.b.length>1) L.polyline(T.b.map(b=>[b.lat,b.lng]),{color:getComputedStyle(document.documentElement).getPropertyValue('--signal').trim()||'#0B7A84',weight:3,opacity:.7,dashArray:'6 8',interactive:false}).addTo(T.layer);
-    T.b.forEach(b=>{ const st=tStatus(b.id), sel=T.sel===b.id;
+    const RB=T.b.filter(b=>b.zone!=='O'); if(RB.length>1) L.polyline(RB.map(b=>[b.lat,b.lng]),{color:getComputedStyle(document.documentElement).getPropertyValue('--signal').trim()||'#0B7A84',weight:3,opacity:.7,dashArray:'6 8',interactive:false}).addTo(T.layer);
+    tVis().forEach(b=>{ const st=tStatus(b.id), sel=T.sel===b.id;
       L.marker([b.lat,b.lng],{title:b.address,zIndexOffset:sel?1000:0,icon:L.divIcon({className:'t-pin-wrap',html:'<span class="t-pin s-'+st+(sel?' sel':'')+'">'+T.num[b.id]+'</span>',iconSize:[30,30],iconAnchor:[15,15]})})
         .on('click',()=>tOpen(b.id)).addTo(T.layer); });
   }
@@ -4051,7 +4065,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     navigator.geolocation.getCurrentPosition(p=>{ const ll=[p.coords.latitude,p.coords.longitude];
       if(T.me) T.me.setLatLng(ll); else T.me=L.marker(ll,{interactive:false,zIndexOffset:2000,icon:L.divIcon({className:'t-pin-wrap',html:'<span class="t-me"></span>',iconSize:[16,16],iconAnchor:[8,8]})}).addTo(T.map);
       T.map.setView(ll,16);
-      const open=T.b.filter(b=>tStatus(b.id)==='none').map(b=>({b,d:tDist(ll[0],ll[1],b.lat,b.lng)})).sort((a,b)=>a.d-b.d)[0];
+      const open=tVis().filter(b=>tStatus(b.id)==='none').map(b=>({b,d:tDist(ll[0],ll[1],b.lat,b.lng)})).sort((a,b)=>a.d-b.d)[0];
       toast(open?'Closest unvisited: '+open.b.address+' ('+tFmtDist(open.d)+')':'Every building has been visited');
     },()=>toast('Turn on location for Install Board to see where you are.'),{enableHighAccuracy:true,timeout:10000,maximumAge:30000});
   }
@@ -4066,7 +4080,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     if(!refresh) T.oc=null;
     state.detailId=null; const selChanged=T.sel!==id; T.sel=id; if(selChanged) tDrawMarkers();
     const v=tVisits(id), sold=v.filter(x=>x.outcome==='sold').length, z=tZone(b.zone), mgr=state.canAnnounce;
-    const dest=encodeURIComponent(b.address+', Bronx, NY '+b.zip);
+    const dest=encodeURIComponent(b.address+', '+tCity(b)+', '+(b.zip&&b.zip[0]==='0'?'NJ':'NY')+' '+b.zip);
     const hist=v.length?v.map(x=>{ let gps='';
         if(x.gps_lat!=null){ const d=tDist(x.gps_lat,x.gps_lng,b.lat,b.lng); gps=d<=150?'<div class="t-gps ok">📍 Logged at the building</div>':'<div class="t-gps">📍 Logged '+tFmtDist(d)+' away</div>'; }
         const can=mgr||x.created_by===state.meId||x.agent_id===state.meId;
@@ -4074,7 +4088,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       :'<p class="t-meta" style="margin:0">No one has worked this building yet.</p>';
     sh.innerHTML='<div class="t-sheet" data-id="'+id+'">'
       +'<div class="sheet-head"><h2 id="sheetTitle">'+tEsc(b.address)+'</h2><button class="sheet-x" type="button" aria-label="Close" id="tX">×</button></div>'
-      +'<div class="t-meta">Stop '+T.num[b.id]+' of '+T.b.length+' · '+tEsc(z?z.name:'')+' · Bronx, NY '+tEsc(b.zip)+'</div>'
+      +'<div class="t-meta">Stop '+T.num[b.id]+' of '+T.b.length+' · '+tEsc(z?z.name:'')+' · '+tEsc(tCity(b))+', '+(b.zip&&b.zip[0]==='0'?'NJ':'NY')+' '+tEsc(b.zip)+'</div>'
       +'<div class="t-facts"><div class="t-fact"><div class="k">Visits</div><div class="v">'+v.length+'</div></div><div class="t-fact"><div class="k">Sold</div><div class="v">'+sold+'</div></div><div class="t-fact"><div class="k">Turf</div><div class="v">'+tEsc(z&&z.agent_id?tName(z.agent_id):'Open')+'</div></div></div>'
       +'<div class="t-links"><a class="btn btn-ghost btn-small" href="https://maps.apple.com/?daddr='+dest+'" target="_blank" rel="noopener">Apple Maps</a><a class="btn btn-ghost btn-small" href="https://www.google.com/maps/dir/?api=1&destination='+dest+'" target="_blank" rel="noopener">Google Maps</a><button type="button" id="tShow" class="btn btn-ghost btn-small">Show on map</button></div>'
       +'<div class="t-sec">Log a visit</div>'
@@ -4117,7 +4131,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   }
   document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&!$('#sheet').hidden&&$('#sheet .t-sheet')) tClose(); });
   $('#sheet').addEventListener('click',e=>{ if(e.target.id==='sheet'&&T.sel!=null){ T.sel=null; tDrawMarkers(); } });
-  $('#tMe').onclick=tLocate; $('#tAll').onclick=tFitAll;
+  $('#tMe').onclick=tLocate; $('#tAll').onclick=tFitAll; $('#tOut').onclick=()=>tSetOut(!T.showOut);
   document.querySelectorAll('#tSeg button').forEach(b=>b.onclick=()=>{ T.view=b.dataset.v; document.querySelectorAll('#tSeg button').forEach(x=>x.setAttribute('aria-pressed',x===b)); renderTerritory(); });
   // ---------- the Map is earned ----------
   // Five sales in a Monday-to-Sunday week opens it for ten days, counted from the fifth sale.

@@ -779,6 +779,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   // get the install reminder texts for them, can look at their pay reports (no dollar figures),
   // and can put a new teammate forward for an owner to approve. Anything that writes to someone
   // else's order, and everything in the manager tools, stays where it was.
+  let refreshProfiles=async()=>{};
   function refreshTeamIds(){
     const me=state.meId, out=new Set();
     if(me) Object.keys(state.profiles||{}).forEach(id=>{ if((state.profiles[id]||{}).team_lead_id===me) out.add(id); });
@@ -2121,7 +2122,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
           });
           if(r==null||r===(u.role||'agent')) return;
           await teamCall({action:'set_role',userId:u.id,role:r});
-          toast((u.name||'They')+' is now a '+roleLabel(r).toLowerCase()); loadTeam(); loadProfiles();
+          toast((u.name||'They')+' is now a '+roleLabel(r).toLowerCase()); loadTeam(); refreshProfiles();
         });
         mk('Reports to',async()=>{
           const leads=users.filter(x=>x.role==='lead'&&x.id!==u.id);
@@ -2135,7 +2136,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
           await teamCall({action:'set_lead',userId:u.id,leadId:who||null});
           const lead=leads.find(x=>x.id===who);
           toast(who?'Now on '+((lead&&(lead.name||lead.email))||'their')+'\u2019s team':'Leader cleared');
-          loadTeam(); loadProfiles();
+          loadTeam(); refreshProfiles();
         });
         mk(u.active?'Deactivate':'Reactivate',async()=>{
           if(u.active&&!confirm('Deactivate '+(u.name||u.email)+'? They won\'t be able to sign in. Their orders stay credited to them, and you can reactivate them anytime.')) return;
@@ -2260,7 +2261,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
           const w=document.createElement('div'); w.className='welcome'; w.textContent=text; msg.append(w);
           const sh=document.createElement('button'); sh.type='button'; sh.className='btn btn-ghost btn-small'; sh.style.marginTop='8px';
           sh.textContent='Text / share this message'; sh.onclick=()=>shareText(text); msg.append(sh);
-          loadRecruits(); loadTeam(); loadProfiles();
+          loadRecruits(); loadTeam(); refreshProfiles();
         }catch(e){ tmSay(msg,e.message,'err'); ap.disabled=false; ap.textContent='Approve'; }
       };
       const no=document.createElement('button'); no.type='button'; no.className='btn btn-ghost btn-small'; no.textContent='Decline';
@@ -2413,7 +2414,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
           const sh=document.createElement('button'); sh.type='button'; sh.className='btn btn-ghost btn-small';
           sh.textContent='Share another way'; sh.onclick=()=>shareText(text); row2.append(sh);
           msg.append(row2);
-          loadApps(); loadRecruits(); loadTeam(); loadProfiles();
+          loadApps(); loadRecruits(); loadTeam(); refreshProfiles();
         }catch(e){ tmSay(msg,e.message,'err'); ap.disabled=false; ap.textContent='Approve'; }
       };
       const no=document.createElement('button'); no.type='button'; no.className='btn btn-ghost btn-small'; no.textContent='Decline';
@@ -3144,6 +3145,67 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const cat=norm(r.Category).toLowerCase(), amt=parseFloat(norm(r.PaidAmount).replace(/[^0-9.-]/g,''));
     return (cat.includes('chargeback')||/fchb/i.test(norm(r.Comments))||(isFinite(amt)&&amt<0))?'cb':'paid';
   }
+  // Verizon's export isn't always shaped the same way twice: the rows can sit on a later
+  // sheet, the headings can sit below a title or a blank line, and column names vary.
+  // The normal path below is untouched — this only runs when that finds nothing usable.
+  const PAY_ALIASES={
+    DocumentNum:['documentnum','document num','document number','docnum','doc num','document','order number','order num'],
+    Status:['status','order status','account status'],
+    CustomerName:['customername','customer name','customer'],
+    SalesAgentName:['salesagentname','sales agent name','sales agent','agent name','agent','rep name','rep'],
+    PaymentDate:['paymentdate','payment date','pay date','paid date'],
+    Product:['product','product name'],
+    Program:['program','program name'],
+    PaidAmount:['paidamount','paid amount','commission','commission amount'],
+    Category:['category','commission type'],
+    Comments:['comments','comment','notes','note']
+  };
+  const payKey=h=>String(h==null?'':h).toLowerCase().replace(/[\s_]+/g,' ').trim();
+  // Keeps every original column and adds the canonical name when it isn't already there.
+  function canonPayRow(r){
+    const out={}; Object.keys(r).forEach(k=>{ out[k]=r[k]; });
+    Object.keys(PAY_ALIASES).forEach(canon=>{
+      if(out[canon]!==undefined&&norm(out[canon])!=='') return;
+      const hit=Object.keys(r).find(k=>PAY_ALIASES[canon].includes(payKey(k)));
+      if(hit!==undefined) out[canon]=r[hit];
+    });
+    return out;
+  }
+  const payRowUsable=r=>!!norm(r.DocumentNum)&&!!norm(r.Status);
+  function findPayRows(XLSX,wb){
+    const tried=[];
+    const filled=l=>(l||[]).some(c=>norm(c)!=='');
+    for(const name of wb.SheetNames){
+      const sheet=wb.Sheets[name]; if(!sheet) continue;
+      let grid=[];
+      // Blank rows are kept so the row numbers stay honest; the rows are built straight
+      // from the grid rather than asking the reader to start at an offset.
+      try{ grid=XLSX.utils.sheet_to_json(sheet,{header:1,defval:''})||[]; }catch(_){ continue; }
+      for(let r=0;r<Math.min(grid.length,30);r++){
+        const low=(grid[r]||[]).map(payKey);
+        const hasDoc=low.some(h=>PAY_ALIASES.DocumentNum.includes(h));
+        const hasStatus=low.some(h=>PAY_ALIASES.Status.includes(h));
+        if(!hasDoc||!hasStatus) continue;
+        const head=(grid[r]||[]).map(c=>norm(c));
+        const rows=[];
+        for(let i=r+1;i<grid.length;i++){
+          const line=grid[i]||[];
+          if(!filled(line)) continue;
+          const o={};
+          head.forEach((h,ci)=>{ if(h) o[h]=line[ci]===undefined?'':line[ci]; });
+          rows.push(canonPayRow(o));
+        }
+        if(rows.some(payRowUsable)) return {rows,sheet:name,headerRow:r+1};
+      }
+      tried.push({name,head:((grid.find(filled))||[]).slice(0,10).map(c=>norm(c)).filter(Boolean)});
+    }
+    return {rows:[],tried};
+  }
+  function payNotFound(found){
+    const seen=(found.tried||[]).map(t=>'\u201C'+t.name+'\u201D'+(t.head.length?': '+t.head.join(', '):' (empty)')).join(' \u00B7 ');
+    return 'Couldn\u2019t find the report columns in that file \u2014 it needs a sheet with a Document Num column and a Status column. '
+      +(seen?'What the file actually has \u2014 '+seen:'The file has no readable sheets.');
+  }
   $('#payFile').onchange=async e=>{
     const file=e.target.files&&e.target.files[0]; e.target.value='';
     if(!file) return;
@@ -3152,7 +3214,14 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     try{
       const XLSX=await loadXLSX();
       const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});
-      const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
+      let rows=(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''})||[]).map(canonPayRow);
+      let whereNote='';
+      if(!rows.some(payRowUsable)){
+        const found=findPayRows(XLSX,wb);
+        if(!found.rows.length) throw new Error(payNotFound(found));
+        rows=found.rows;
+        whereNote=' (sheet \u201C'+found.sheet+'\u201D, headings on row '+found.headerRow+')';
+      }
       const byMon={}; (state.installs||[]).forEach(i=>{ if(i.mon) byMon[norm(i.mon).toUpperCase()]=i; });
       const byPhone={}, saleOf={};
       (state.wireless||[]).forEach(w=>saleOf[w.id]=w);
@@ -3222,7 +3291,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       drop(plan.linesPaid,'paid',state.wlines||[]); drop(plan.linesCb,'charged_back',state.wlines||[]);
       payPlan={plan,file:file.name,missing,already,items,unknownNames:[...unknownNames]};
       renderPayPreview();
-      tmSay(msg,used+' rows read from '+file.name+'.','ok');
+      tmSay(msg,used+' rows read from '+file.name+whereNote+'.','ok');
     }catch(err){ tmSay(msg,err.message||'Couldn\'t read that file.','err'); }
   };
   function renderPayPreview(){
@@ -4244,6 +4313,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       state.profiles={}; (data||[]).forEach(p=>state.profiles[p.id]=p);
       refreshTeamIds();
     }
+    refreshProfiles=loadProfiles;
     function startBoard(){
       if(started) return; started=true;
       $('#signOut').hidden=false;

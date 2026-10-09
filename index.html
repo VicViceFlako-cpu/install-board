@@ -3291,6 +3291,12 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         }
         addMissing(doc,who);
       });
+      // A reversal beats a payment within one report, however the rows are ordered. Rows are
+      // walked in file order, so chargebacks listed above their matching payments would
+      // otherwise leave an order in both lists at once — counted twice, and applied twice.
+      plan.installsCb.forEach((_,id)=>plan.installsPaid.delete(id));
+      plan.linesCb.forEach((_,id)=>plan.linesPaid.delete(id));
+
       // A phone number that only brought the company's cut: the agent earned nothing, so
       // it is flagged for the owner and the sale stays open rather than being marked paid.
       let companyOnly=0;
@@ -3313,11 +3319,23 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const {plan,missing,already}=payPlan;
     const paidN=plan.installsPaid.size+plan.linesPaid.size, cbN=plan.installsCb.size+plan.linesCb.size;
     const coN=payPlan.companyOnly||0;
+    const inReport=(payPlan.items||[]).reduce((a,x)=>{ a[x.outcome==='chargeback'?'cb':'paid']++; return a; },{paid:0,cb:0});
     const sum=document.createElement('div'); sum.className='pi-sum';
     [[paidN,'to mark paid'],[cbN,'chargebacks'],[missing.length,'not on the board'],[already.length,'already matched']]
       .concat(coN?[[coN,'company cut only']]:[])
       .forEach(([v,l])=>{ const d=document.createElement('div'); d.className='pi-tot'; const b=document.createElement('b'); b.textContent=v; const sp=document.createElement('span'); sp.textContent=l; d.append(b,sp); sum.append(d); });
     box.append(sum);
+    // The tiles above count what this import can act on. When the report holds more than
+    // that, the difference is orders that aren't on the board — easy to misread otherwise.
+    const gapCb=inReport.cb-cbN, gapPaid=inReport.paid-(paidN+coN);
+    if(gapCb>0||gapPaid>0){
+      const n=document.createElement('p'); n.className='note'; n.style.margin='8px 0 0';
+      const bits=[];
+      if(gapCb>0) bits.push('The report has '+inReport.cb+' chargeback'+(inReport.cb===1?'':'s')+' \u2014 '+gapCb+' of them '+(gapCb===1?'is':'are')+' not on the board');
+      if(gapPaid>0) bits.push(gapPaid+' paid order'+(gapPaid===1?'':'s')+' '+(gapPaid===1?'is':'are')+' not on the board');
+      n.textContent=bits.join('. ')+'. They\u2019re listed below and nothing will change for them.';
+      box.append(n);
+    }
     const list=document.createElement('div'); list.className='pi-list';
     const add=(label,tag)=>{ const r=document.createElement('div'); r.className='pi-row'; const a=document.createElement('div'); a.textContent=label; const b=document.createElement('span'); b.textContent=tag; r.append(a,b); list.append(r); };
     const creditNote=id=>{ const it=(payPlan.items||[]).find(x=>x.board_id===id); return it&&it.credit_note?' → '+it.credit_note:''; };
@@ -3443,27 +3461,33 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   function pdfEsc(v){ return String(v==null?'':v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
   function pdfRows(items){
-    const net=items.filter(r=>r.kind!=='wireless').map(r=>({
+    const asNet=list=>list.filter(r=>r.kind!=='wireless').map(r=>({
       name: genericName(r.customer)? '' : pdfTitle(r.customer),
       ref: String(r.doc_num||'').toUpperCase(),
       plan: pdfTitle(r.product), risk: r.risk||null
     })).sort((a,b)=>(a.name||'~').localeCompare(b.name||'~'));
 
-    const byPhone=new Map();
-    items.filter(r=>r.kind==='wireless').forEach(r=>{
-      const k=digits10(r.doc_num); if(!k) return;
-      const cur=byPhone.get(k)||{name:'',ref:fmtPhone(r.doc_num),plans:[],risk:null};
-      if(!cur.name&&!genericName(r.customer)) cur.name=pdfTitle(r.customer);
-      const pl=pdfPlan(r.product); if(pl&&!cur.plans.includes(pl)) cur.plans.push(pl);
-      if(r.risk) cur.risk=r.risk;
-      byPhone.set(k,cur);
-    });
-    const wl=[...byPhone.values()].map(w=>({name:w.name,ref:w.ref,plan:w.plans[0]||'Wireless line',risk:w.risk}))
-      .sort((a,b)=>(a.name||'~').localeCompare(b.name||'~'));
-    return {net,wl};
+    const asWl=list=>{
+      const byPhone=new Map();
+      list.filter(r=>r.kind==='wireless').forEach(r=>{
+        const k=digits10(r.doc_num); if(!k) return;
+        const cur=byPhone.get(k)||{name:'',ref:fmtPhone(r.doc_num),plans:[],risk:null};
+        if(!cur.name&&!genericName(r.customer)) cur.name=pdfTitle(r.customer);
+        const pl=pdfPlan(r.product); if(pl&&!cur.plans.includes(pl)) cur.plans.push(pl);
+        if(r.risk) cur.risk=r.risk;
+        byPhone.set(k,cur);
+      });
+      return [...byPhone.values()].map(w=>({name:w.name,ref:w.ref,plan:w.plans[0]||'Wireless line',risk:w.risk}))
+        .sort((a,b)=>(a.name||'~').localeCompare(b.name||'~'));
+    };
+    // Reversals get their own section rather than sitting among the payments.
+    const kept=items.filter(r=>r.outcome!=='chargeback'), back=items.filter(r=>r.outcome==='chargeback');
+    return {net:asNet(kept), wl:asWl(kept), back:asNet(back).concat(asWl(back))};
   }
 
   const PDF_CSS='@page{size:Letter;margin:0}*{box-sizing:border-box}'
+   +'section.back h2{color:#B42318}section.back h2 .n{background:#FEE4E2;color:#B42318}'
+   +'section.back tbody td{background:#FEF6F5}section.back tbody .mono{color:#B42318}'
    +'body{margin:0;font:13px/1.45 -apple-system,"Segoe UI",Helvetica,Arial,sans-serif;color:#15181d;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
    +'.page{width:8.5in;min-height:11in;padding:.62in .6in;display:flex;flex-direction:column}'
    +'header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #15181d;padding-bottom:14px}'
@@ -3489,13 +3513,13 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
    +'footer p{margin:0 0 5px}.gen{color:#9aa1ab;margin-top:9px}';
 
   function payStatementHtml(agent,payDate,items){
-    const {net,wl}=pdfRows(items);
+    const {net,wl,back}=pdfRows(items);
     const all=net.concat(wl), total=all.length;
     const hi=all.filter(r=>r.risk==='high').length, md=all.filter(r=>r.risk==='medium').length;
     const flagged=[md?md+' medium risk':'', hi?hi+' high risk':''].filter(Boolean).join(' · ');
     const nameCell=r=>(r.name? pdfEsc(r.name) : '<span class="muted">Name not on report</span>')
       +(r.risk?'<span class="flag '+pdfEsc(r.risk)+'">'+pdfEsc(pdfRiskLabel(r.risk))+'</span>':'');
-    const sect=(label,refHead,rows)=>rows.length? '<section><h2>'+label+' <span class="n">'+rows.length+'</span></h2>'
+    const sect=(label,refHead,rows,cls)=>rows.length? '<section'+(cls?' class="'+cls+'"':'')+'><h2>'+label+' <span class="n">'+rows.length+'</span></h2>'
       +'<table><thead><tr><th>Customer</th><th>'+refHead+'</th><th>Plan</th></tr></thead><tbody>'
       +rows.map(r=>'<tr><td class="s">'+nameCell(r)+'</td><td class="mono">'+pdfEsc(r.ref)+'</td><td>'+pdfEsc(r.plan)+'</td></tr>').join('')
       +'</tbody></table></section>' : '';
@@ -3505,11 +3529,15 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       +'<div class="sub">Verizon Residential</div></div></div>'
       +'<div class="doc"><div class="dt">Pay statement</div><div class="dd">'+pdfEsc(fmtLong(payDate))+'</div></div></header>'
       +'<div class="who"><div class="nm">'+pdfEsc(agent)+'</div><div class="cnt">'+total+' paid item'+(total===1?'':'s')
+      +(back.length?' · '+back.length+' charged back':'')
       +(flagged?' · '+pdfEsc(flagged):'')+'</div></div>'
       +sect('Internet','Order # (MON)',net)
       +sect('Wireless','Phone',wl)
+      +sect('Charged back','Order # / Phone',back,'back')
       +'<footer><p>This statement lists what Verizon paid on. It does not show commission amounts — those come from '
       +'Market Direct separately. Questions about a line go to your manager.</p>'
+      +(back.length?'<p>A charged back line is one Verizon has reversed after paying it. It is deducted from '
+      +'commission, and may relate to a sale from an earlier period.</p>':'')
       +'<p class="gen">Generated '+pdfEsc(new Date().toLocaleDateString(undefined,{month:'long',day:'numeric',year:'numeric'}))
       +' · Install Board</p></footer></article></body></html>';
   }
@@ -3560,7 +3588,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     if(state.isOwner) renderUnbilled(sh);
     const body=document.createElement('div'); body.textContent='Loading…'; body.className='lb-sub'; sh.append(body);
     let q=sb.from('pay_report_items').select('payment_date,doc_num,customer,product,kind,outcome,risk').order('payment_date',{ascending:false}).limit(500);
-    if(state.isOwner) q=q.eq('agent_id',who).eq('outcome','paid');
+    if(state.isOwner) q=q.eq('agent_id',who).in('outcome',['paid','chargeback']);
     else if(state.isLead) q=q.eq('agent_id',who);
     const {data,error}=await q;
     body.innerHTML='';
@@ -3570,7 +3598,10 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     Object.keys(weeks).sort().reverse().forEach(k=>{
       const head2=document.createElement('h3');
       const risky=weeks[k].filter(r=>r.risk).length;
-      head2.textContent=(k==='undated'?'Undated':'Paid '+fmtLong(k))+' — '+weeks[k].length+(weeks[k].length===1?' item':' items')+(risky?' · '+risky+' at reduced commission':'');
+      const backs=weeks[k].filter(r=>r.outcome==='chargeback').length;
+      head2.textContent=(k==='undated'?'Undated':'Paid '+fmtLong(k))+' — '+weeks[k].length+(weeks[k].length===1?' item':' items')
+        +(risky?' · '+risky+' at reduced commission':'')
+        +(backs?' · '+backs+' charged back':'');
       body.append(head2);
       if(k!=='undated'){
         const dl=document.createElement('button'); dl.type='button'; dl.className='btn btn-ghost btn-small pay-dl';
@@ -3588,6 +3619,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         const boardName=(order0&&order0.customer)||(wlSale&&wlSale.customer)||'';
         const shown=(genericName(r.customer)&&boardName)?boardName:(r.customer||r.doc_num||'Order');
         const b=document.createElement('b'); b.textContent=shown;
+        if(r.outcome==='chargeback'){ const t=document.createElement('span'); t.className='tag off'; t.textContent='Charged back'; b.append(' ',t); }
         if(r.risk){ b.append(' '); b.append(riskTag(r.risk)); }
         const sm=document.createElement('small');
         sm.textContent=[r.kind==='wireless'?fmtPhone(r.doc_num):r.doc_num, r.product, r.risk?'reduced commission':''].filter(Boolean).join(' · ');

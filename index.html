@@ -3133,6 +3133,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   }
   // wireless rows repeat per commission type; keep the plan name, drop the spiff/base rows
   const isSpiffish=p=>/spiff/i.test(p)||/^smartphone$/i.test(p.trim());
+  // The Simplicity line is the company's cut. On its own it means Verizon paid nothing
+  // the agent earns — the activation components never came through.
+  const isCompanyCut=p=>/simplicity/i.test(String(p||''));
   const planTitle=p=>p.replace(/\s+/g,' ').trim().toLowerCase().replace(/\b([a-z])/g,(m,c)=>c.toUpperCase());
   function bestProduct(a,b,kind){
     if(kind!=='wireless') return a||b;
@@ -3171,7 +3174,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     });
     return out;
   }
-  const payRowUsable=r=>!!norm(r.DocumentNum)&&!!norm(r.Status);
+  const payRowUsable=r=>!!norm(r.DocumentNum)&&(!!norm(r.PaidAmount)||!!norm(r.PaymentDate)||!!norm(r.Status));
   function findPayRows(XLSX,wb){
     const tried=[];
     const filled=l=>(l||[]).some(c=>norm(c)!=='');
@@ -3184,8 +3187,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       for(let r=0;r<Math.min(grid.length,30);r++){
         const low=(grid[r]||[]).map(payKey);
         const hasDoc=low.some(h=>PAY_ALIASES.DocumentNum.includes(h));
-        const hasStatus=low.some(h=>PAY_ALIASES.Status.includes(h));
-        if(!hasDoc||!hasStatus) continue;
+        const hasPair=['Status','PaidAmount','PaymentDate'].some(k=>low.some(h=>PAY_ALIASES[k].includes(h)));
+        if(!hasDoc||!hasPair) continue;
         const head=(grid[r]||[]).map(c=>norm(c));
         const rows=[];
         for(let i=r+1;i<grid.length;i++){
@@ -3203,7 +3206,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   }
   function payNotFound(found){
     const seen=(found.tried||[]).map(t=>'\u201C'+t.name+'\u201D'+(t.head.length?': '+t.head.join(', '):' (empty)')).join(' \u00B7 ');
-    return 'Couldn\u2019t find the report columns in that file \u2014 it needs a sheet with a Document Num column and a Status column. '
+    return 'Couldn\u2019t find the report columns in that file \u2014 it needs a sheet with a Document Num column, plus a Paid Amount, Payment Date or Status column. '
       +(seen?'What the file actually has \u2014 '+seen:'The file has no readable sheets.');
   }
   $('#payFile').onchange=async e=>{
@@ -3238,7 +3241,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       let used=0;
       rows.forEach(r=>{
         const doc=norm(r.DocumentNum||r.documentnum||r['Document Num']);
-        if(!doc||!norm(r.Status)) return;
+        if(!doc||!payRowUsable(r)) return;
         used++;
         const kind=payRowKind(r), who=norm(r.CustomerName)||norm(r.SalesAgentName)||doc, mon=doc.toUpperCase();
         const repName=norm(r.SalesAgentName), matchedAgent=byName[nameKey(repName)]||'';
@@ -3255,10 +3258,12 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
           item.product=bestProduct(item.product,prod,rowKind);
           if(!item.customer) item.customer=norm(r.CustomerName);
           if(!item.agent_id&&matchedAgent) item.agent_id=matchedAgent;
+          if(!isCompanyCut(prod)) item.agentEarned=true;
         } else {
           item={agent_name:repName, agent_id:matchedAgent, payment_date:payDate,
             doc_num:rowKind==='wireless'?digits10(doc):doc, customer:norm(r.CustomerName), product:prod,
-            kind:rowKind, outcome:kind==='cb'?'chargeback':'paid', amount:norm(r.PaidAmount), risk:''};
+            kind:rowKind, outcome:kind==='cb'?'chargeback':'paid', amount:norm(r.PaidAmount), risk:'',
+            agentEarned:rowKind!=='wireless'||!isCompanyCut(prod), lineIds:[]};
           item.product=bestProduct(item.product,'',rowKind);
           itemsBy.set(itemKey,item); items.push(item);
         }
@@ -3279,17 +3284,26 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
           if(!ls||!ls.length){ addMissing(fmtPhone(ph),who); return; }
           { const sale0=saleOf[(ls[0]||{}).saleId]||{}; if(sale0.agentId&&sale0.agentId!==item.agent_id){ item.credit_note=agentLabel(sale0.agentId); item.agent_id=sale0.agentId; } if(sale0.customer&&genericName(item.customer)) item.customer=sale0.customer; }
           ls.forEach(l=>{ const sale=saleOf[l.saleId]||{};
+            if(item.lineIds.indexOf(l.id)<0) item.lineIds.push(l.id);
             (kind==='cb'?plan.linesCb:plan.linesPaid).set(l.id,{label:(sale.customer||'Wireless')+' · '+fmtPhone(l.phone)});
             if(kind==='cb') plan.linesPaid.delete(l.id); });
           return;
         }
         addMissing(doc,who);
       });
+      // A phone number that only brought the company's cut: the agent earned nothing, so
+      // it is flagged for the owner and the sale stays open rather than being marked paid.
+      let companyOnly=0;
+      items.forEach(it=>{
+        if(it.kind!=='wireless'||it.agentEarned) return;
+        it.company_only=true; companyOnly++;
+        (it.lineIds||[]).forEach(id=>{ plan.linesPaid.delete(id); plan.linesCb.delete(id); });
+      });
       const drop=(m,st,arr)=>{ [...m.keys()].forEach(id=>{ const rec=arr.find(x=>x.id===id);
         if(rec&&rec.payoutStatus===st){ m.delete(id); already.push(1); } }); };
       drop(plan.installsPaid,'paid',state.installs||[]); drop(plan.installsCb,'charged_back',state.installs||[]);
       drop(plan.linesPaid,'paid',state.wlines||[]); drop(plan.linesCb,'charged_back',state.wlines||[]);
-      payPlan={plan,file:file.name,missing,already,items,unknownNames:[...unknownNames]};
+      payPlan={plan,file:file.name,missing,already,items,companyOnly,unknownNames:[...unknownNames]};
       renderPayPreview();
       tmSay(msg,used+' rows read from '+file.name+whereNote+'.','ok');
     }catch(err){ tmSay(msg,err.message||'Couldn\'t read that file.','err'); }
@@ -3298,8 +3312,10 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const box=$('#payPreview'); box.innerHTML=''; if(!payPlan) return;
     const {plan,missing,already}=payPlan;
     const paidN=plan.installsPaid.size+plan.linesPaid.size, cbN=plan.installsCb.size+plan.linesCb.size;
+    const coN=payPlan.companyOnly||0;
     const sum=document.createElement('div'); sum.className='pi-sum';
     [[paidN,'to mark paid'],[cbN,'chargebacks'],[missing.length,'not on the board'],[already.length,'already matched']]
+      .concat(coN?[[coN,'company cut only']]:[])
       .forEach(([v,l])=>{ const d=document.createElement('div'); d.className='pi-tot'; const b=document.createElement('b'); b.textContent=v; const sp=document.createElement('span'); sp.textContent=l; d.append(b,sp); sum.append(d); });
     box.append(sum);
     const list=document.createElement('div'); list.className='pi-list';
@@ -3309,6 +3325,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     plan.linesPaid.forEach(v=>add(v.label,'paid'));
     plan.installsCb.forEach((v,id)=>{ const rl=riskOf({id}); add(v.label+(rl?(rl==='high'?' ⚠️ high risk':' ⚠️ medium risk'):''),'chargeback'); });
     plan.linesCb.forEach(v=>add(v.label,'chargeback'));
+    (payPlan.items||[]).filter(x=>x.company_only).forEach(x=>add(fmtPhone(x.doc_num)+' — '+(x.customer||x.agent_name||'Wireless'),'company cut only — stays open'));
     missing.forEach(m=>add(m.doc+' — '+m.who,'not found'));
     (payPlan.unknownNames||[]).forEach(n=>add(n,'name not mapped'));
     if(list.children.length) box.append(list);
@@ -3718,6 +3735,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         const b=document.createElement('b');
         b.textContent=r.customer||'—';
         if(r.risk){ b.append(' ',riskTag(r.risk)); }
+        if(r.company_only){ const t=document.createElement('span'); t.className='tag off'; t.textContent='Company cut only'; b.append(' ',t); }
         const sm=document.createElement('small');
         sm.textContent=[r.kind==='wireless'?fmtPhone(r.doc_num):r.doc_num, r.product||''].filter(Boolean).join(' · ');
         li.append(b,sm); ul.append(li);

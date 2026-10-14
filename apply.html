@@ -94,6 +94,19 @@ label.fld{display:block;font-size:.82rem;color:var(--muted);margin:0 0 4px;font-
 .drop input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 .shot{max-width:100%;max-height:220px;border-radius:10px;margin-top:14px;display:block}
 
+/* W-9 certification */
+.cert{border:2px solid var(--ink);border-radius:12px;padding:14px 16px;margin:4px 0 18px;background:var(--surface)}
+.cert p{margin:0 0 8px;font-weight:600;font-size:.95rem;line-height:1.5}
+.cert p:last-child{margin-bottom:0}
+.cert p.lead{font-weight:700}
+.cert-load{color:var(--muted);font-weight:400}
+.tick{display:flex;gap:10px;align-items:flex-start;margin:0 0 14px;cursor:pointer}
+.tick input{width:22px;height:22px;flex:0 0 22px;margin:1px 0 0;accent-color:var(--signal)}
+.tick span{font-size:.94rem;line-height:1.45}
+.tick small{display:block;color:var(--muted);margin-top:3px;font-size:.84rem}
+.irs-note{font-size:.86rem;font-weight:600;margin:0 0 6px}
+input.sign{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-size:1.5rem;letter-spacing:.01em}
+
 /* review */
 dl.review{margin:0 0 8px;display:grid;grid-template-columns:auto 1fr;gap:8px 16px;align-items:baseline}
 dl.review dt{color:var(--muted);font-size:.84rem;font-weight:600}
@@ -128,7 +141,7 @@ dl.review dd{margin:0;overflow-wrap:anywhere}
 
   <section class="step" data-step="bg">
     <span class="num">1</span>
-    <h2>Do you authorize JB Creative Marketing to run a criminal background check? <span class="req">*</span></h2>
+    <h2>Do you authorize Market Direct LLC to run a criminal background check? <span class="req">*</span></h2>
     <div class="pick" id="pickBg">
       <button type="button" data-v="yes" aria-pressed="false"><span class="key">Y</span>Yes</button>
       <button type="button" data-v="no" aria-pressed="false"><span class="key">N</span>No</button>
@@ -172,7 +185,8 @@ dl.review dd{margin:0;overflow-wrap:anywhere}
 
   <section class="step" data-step="addr">
     <span class="num">7</span>
-    <h2>What's your <b>home address</b>?</h2>
+    <h2>What's your <b>home address</b>? <span class="req">*</span></h2>
+    <p class="hint">This goes on your W-9, so it needs to be your full address.</p>
     <label class="fld" for="fAddr1">Address</label>
     <input id="fAddr1" type="text" autocomplete="address-line1" placeholder="65 Hansen Way">
     <label class="fld" for="fAddr2">Address line 2</label>
@@ -233,8 +247,32 @@ dl.review dd{margin:0;overflow-wrap:anywhere}
   <section class="step" data-step="review">
     <span class="num">13</span>
     <h2>Does this all look right?</h2>
-    <p class="hint">Tap back to fix anything before you send it.</p>
+    <p class="hint">Tap back to fix anything. The W-9 comes next.</p>
     <dl class="review" id="reviewList"></dl>
+  </section>
+
+  <section class="step" data-step="w9">
+    <span class="num">14</span>
+    <h2>Form W-9 &mdash; certify your tax information</h2>
+    <p class="hint">Market Direct LLC needs this to pay you and file your 1099. It is a substitute Form W-9.</p>
+    <dl class="review" id="w9Summary"></dl>
+
+    <div class="cert" id="w9Cert">
+      <p class="cert-load">Loading the certification&hellip;</p>
+    </div>
+
+    <label class="tick"><input type="checkbox" id="fW9Bw">
+      <span>The IRS has told me I am <b>subject to backup withholding</b> for failing to report interest or dividends.
+      <small>Leave this unticked unless the IRS has actually sent you that notice — ticking it strikes item 2 above.</small></span></label>
+
+    <label class="tick"><input type="checkbox" id="fW9Consent">
+      <span>I agree to sign this form electronically, and that typing my name below counts as my signature.</span></label>
+
+    <p class="irs-note">The IRS does not require your consent to any provision of this document.</p>
+
+    <label class="fld" for="fW9Sign">Sign here &mdash; type your full legal name</label>
+    <input id="fW9Sign" class="sign" type="text" autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false" placeholder="Your full legal name">
+    <p class="note" id="w9Date"></p>
   </section>
 
   <section class="step" data-step="done">
@@ -264,7 +302,42 @@ dl.review dd{margin:0;overflow-wrap:anywhere}
   var referrerId=(new URLSearchParams(location.search).get('r')||'').trim();
 
   var data={ bg:null, ref:null };
-  var leaders=null, referrer=null;
+  var leaders=null, referrer=null, w9=null;
+
+  // The certification text is fetched rather than written into this page, so the wording
+  // shown and the wording the server verifies can never drift apart.
+  function loadW9(){
+    return fetch(FN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'w9'})})
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(!j||!j.cert) return;
+        w9=j;
+        var box=$('#w9Cert'); box.innerHTML='';
+        j.cert.split('\n').forEach(function(line,i){
+          var el=document.createElement('p'); if(i===0) el.className='lead';
+          el.textContent=line; box.append(el);
+        });
+      })
+      .catch(function(){});
+  }
+  function drawW9(){
+    var dl=$('#w9Summary'); dl.innerHTML='';
+    var add=function(l,v){ if(!v) return;
+      var dt=document.createElement('dt'); dt.textContent=l;
+      var dd=document.createElement('dd'); dd.textContent=v; dl.append(dt,dd); };
+    add('Name', ((data.firstName||'')+' '+(data.lastName||'')).trim());
+    var street=[data.addr1,data.addr2].filter(Boolean).join(', ');
+    var town=[data.city,data.state,data.zip].filter(Boolean).join(' ');
+    add('Address', [street,town].filter(Boolean).join(', '));
+    add('Taxpayer ID (SSN)', data.ssn?'\u2022\u2022\u2022-\u2022\u2022-'+data.ssn.slice(-4):'');
+    add('Federal tax classification','Individual / sole proprietor');
+    add('Requested by','Market Direct LLC');
+    $('#w9Date').textContent='Signing as of '+new Date().toLocaleDateString(undefined,{month:'long',day:'numeric',year:'numeric'})+'.';
+  }
+  function nameKey(v){
+    return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()
+      .replace(/[^a-z\s]/g,' ').split(/\s+/).filter(Boolean).sort().join(' ');
+  }
 
   // Who could have referred them. Asked for once, as soon as the page opens, so the
   // list is ready by the time they reach that question; the typed box stays as the
@@ -304,7 +377,7 @@ dl.review dd{margin:0;overflow-wrap:anywhere}
   var uploaded={};          // which of the two files made it
 
   // The order of screens. 'refname' only appears for someone who was referred.
-  var ORDER=['intro','bg','phone','ref','refname','first','last','addr','dob','ssn','email','idphoto','headshot','review','done'];
+  var ORDER=['intro','bg','phone','ref','refname','first','last','addr','dob','ssn','email','idphoto','headshot','review','w9','done'];
   var at=0;
 
   function stepEl(name){ return document.querySelector('.step[data-step="'+name+'"]'); }
@@ -316,13 +389,14 @@ dl.review dd{margin:0;overflow-wrap:anywhere}
     $('#back').hidden = (at===0 || name==='done');
     $('#foot').hidden = (name==='done');
     var btn=$('#next');
-    btn.textContent = name==='intro' ? 'Apply now' : name==='review' ? 'Submit' : 'OK';
+    btn.textContent = name==='intro' ? 'Apply now' : name==='review' ? 'Review done' : name==='w9' ? 'Sign and submit' : 'OK';
     btn.disabled=false;
     // the share of the way through, ignoring the intro and the thank-you
     $('#bar i').style.width = Math.round(Math.max(0,at-1)/(ORDER.length-2)*100)+'%';
     clearMsg();
     if(name==='idphoto'||name==='headshot') getRef().catch(function(){});
     if(name==='review') drawReview();
+    if(name==='w9'){ drawW9(); if(!w9) loadW9(); }
     var f=stepEl(name).querySelector('input:not([type=file]):not([hidden])');
     if(f && !('ontouchstart' in window)) setTimeout(function(){ f.focus(); },60);
     window.scrollTo(0,0);
@@ -386,6 +460,22 @@ dl.review dd{margin:0;overflow-wrap:anywhere}
     if(name==='addr'){
       data.addr1=$('#fAddr1').value.trim(); data.addr2=$('#fAddr2').value.trim();
       data.city=$('#fCity').value.trim(); data.state=$('#fState').value.trim(); data.zip=$('#fZip').value.trim();
+      if(!data.addr1){ say('Enter your street address \u2014 your W-9 needs it.'); return false; }
+      if(!data.city){ say('Enter your city.'); return false; }
+      if(!data.state){ say('Enter your state.'); return false; }
+      if(!data.zip){ say('Enter your zip code.'); return false; }
+      return true;
+    }
+    if(name==='w9'){
+      if(!w9||!w9.cert){ say('The certification hasn\u2019t loaded yet \u2014 one moment.'); loadW9(); return false; }
+      if(!$('#fW9Consent').checked){ say('Tick the box agreeing to sign electronically.'); return false; }
+      var sig=$('#fW9Sign').value.trim();
+      if(sig.length<3){ say('Type your full legal name to sign.'); return false; }
+      if(nameKey(sig)!==nameKey((data.firstName||'')+' '+(data.lastName||''))){
+        say('Your signature has to match the name on the form \u2014 type it as \u201C'+data.firstName+' '+data.lastName+'\u201D.');
+        return false;
+      }
+      data.w9Signature=sig; data.w9Consent=true; data.w9BackupWithholding=$('#fW9Bw').checked;
       return true;
     }
     if(name==='dob'){
@@ -499,7 +589,7 @@ dl.review dd{margin:0;overflow-wrap:anywhere}
   function submit(){
     var btn=$('#next'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>Sending…';
     getRef().then(send).catch(function(){
-      btn.disabled=false; btn.textContent='Submit';
+      btn.disabled=false; btn.textContent='Sign and submit';
       say('Couldn’t reach the server. Check your connection and try again.');
     });
   }
@@ -511,6 +601,8 @@ dl.review dd{margin:0;overflow-wrap:anywhere}
       firstName:data.firstName, lastName:data.lastName, phone:data.phone, email:data.email,
       dob:data.dob, ssn:data.ssn,
       addr1:data.addr1, addr2:data.addr2, city:data.city, state:data.state, zip:data.zip,
+      w9Signature:data.w9Signature||'', w9Cert:(w9&&w9.cert)||'',
+      w9Consent:data.w9Consent===true, w9BackupWithholding:data.w9BackupWithholding===true,
       bgCheck:data.bg===true, referred:data.ref===true,
       referredName:data.ref===true?(data.referredName||''):''
     };
@@ -518,7 +610,7 @@ dl.review dd{margin:0;overflow-wrap:anywhere}
       .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j}; }); })
       .then(function(res){
         if(!res.ok||!res.j||res.j.error){
-          btn.disabled=false; btn.textContent='Submit';
+          btn.disabled=false; btn.textContent='Sign and submit';
           say((res.j&&res.j.error)||'Couldn’t send that. Try again in a moment.');
           return;
         }
@@ -527,7 +619,7 @@ dl.review dd{margin:0;overflow-wrap:anywhere}
         at=ORDER.indexOf('done'); show();
       })
       .catch(function(){
-        btn.disabled=false; btn.textContent='Submit';
+        btn.disabled=false; btn.textContent='Sign and submit';
         say('Couldn’t send that. Check your connection and try again.');
       });
   }
@@ -555,10 +647,11 @@ dl.review dd{margin:0;overflow-wrap:anywhere}
     if(y) y.setAttribute('aria-pressed','true');
   }
   loadLeaders();
+  loadW9();
 
   $('#next').addEventListener('click', function(){
     var name=ORDER[at];
-    if(name==='review'){ if(check(name)) submit(); return; }
+    if(name==='w9'){ if(check(name)) submit(); return; }
     if(check(name)) go(1);
   });
   $('#back').addEventListener('click', function(){ go(-1); });

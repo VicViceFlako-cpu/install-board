@@ -259,7 +259,7 @@ const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
   async function refresh(){
     try{
       const jobs=[loadMine(),loadBoard(),loadPay()];
-      if(isAdmin&&view==='team'&&teamId)jobs.push(loadOther(teamId));
+      if(isAdmin&&view==='team'&&teamId&&teamId!==uid)jobs.push(loadOther(teamId));
       await Promise.all(jobs); setSync('Live','live');
     }catch(e){setSync('Offline — retrying','off');}
     render();
@@ -326,14 +326,14 @@ const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
     if(isAdmin){if(document.activeElement!==$('inRate'))$('inRate').value=pay.rate;if(document.activeElement!==$('inGoal'))$('inGoal').value=pay.goal;}
     if(view==='board'){drawBoard();return;}
     if(view==='team'){
-      const rest=members.filter(m=>m.user_id!==uid);
+      const rest=[...members].sort((a,b)=>(a.user_id===uid?-1:b.user_id===uid?1:0));
       if(!teamId||!rest.some(m=>m.user_id===teamId))teamId=rest[0]&&rest[0].user_id;
       $('teamPick').hidden=false;
       $('teamPick').innerHTML=rest.map(m=>`<button type="button" class="chip${m.user_id===teamId?' on':''}" data-id="${m.user_id}">${esc(m.display_name)}</button>`).join('');
       $('teamPick').querySelectorAll('.chip').forEach(b=>b.onclick=()=>{teamId=b.dataset.id;render();refresh();});
       $('pad').hidden=true;
       const m=rest.find(x=>x.user_id===teamId);
-      drawDetail(m?m.display_name:'—',others[teamId]||{doors:[],shifts:[]});
+      drawDetail(m?m.display_name:'—',teamId===uid?mine:(others[teamId]||{doors:[],shifts:[]}));
     }else{$('teamPick').hidden=true;$('pad').hidden=false;drawDetail(myName(),mine);}
   }
   function drawDetail(name,data){

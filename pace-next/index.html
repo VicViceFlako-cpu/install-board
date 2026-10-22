@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Door Pace</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Door Pace">
+<meta name="theme-color" content="#10161C">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" href="icon.png">
+<link rel="manifest" href="manifest.json">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: one-column field tool — view tabs (My pace / Leaderboard / Team), pace meter, tap pad, chart, door log, shifts */
+:root{
+  --bg:#EDF0F2; --surface:#FFFFFF; --ink:#16202A; --muted:#5B6773; --line:#D3D9DF;
+  --accent:#E07A12; --accent-ink:#FFFFFF;
+  --good:#1D8A55; --good-soft:#DDF2E6; --bad:#C2372B; --bad-soft:#F8E0DD;
+  --display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#10161C; --surface:#18212A; --ink:#E8EDF1; --muted:#93A0AC; --line:#2A3540;
+  --accent:#F29233; --accent-ink:#1A1206;
+  --good:#4CC489; --good-soft:#163527; --bad:#F2695C; --bad-soft:#3A1C1A; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#10161C; --surface:#18212A; --ink:#E8EDF1; --muted:#93A0AC; --line:#2A3540;
+  --accent:#F29233; --accent-ink:#1A1206;
+  --good:#4CC489; --good-soft:#163527; --bad:#F2695C; --bad-soft:#3A1C1A; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 40px}
+.wrap{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+header{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+h1{font-family:var(--display);font-weight:800;font-size:28px;letter-spacing:.02em;text-transform:uppercase;margin:0}
+.rate{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.label{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:600}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+.meter{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.big{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.avg{font-family:var(--display);font-weight:800;font-size:72px;line-height:.9;font-variant-numeric:tabular-nums}
+.avg small{font-size:22px;color:var(--muted);font-weight:700;margin-left:4px}
+.pill{font-family:var(--display);font-weight:700;font-size:16px;letter-spacing:.06em;text-transform:uppercase;padding:6px 12px;border-radius:999px;white-space:nowrap}
+.pill.good{background:var(--good-soft);color:var(--good)}
+.pill.bad{background:var(--bad-soft);color:var(--bad)}
+.pill.idle{background:var(--bg);color:var(--muted)}
+.msg{font-size:15px;font-weight:500;margin:0}
+.msg b{font-family:var(--mono)}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;border-top:1px solid var(--line);padding-top:12px}
+.stats div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.stats .num{font-size:18px;font-weight:600}
+
+.pad{display:flex;flex-direction:column;gap:8px}
+.keys{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.keys .key.zero{grid-column:1/-1;flex-direction:row;gap:10px;min-height:56px}
+.keys .key.zero span{margin-top:0}
+.keys .key{min-height:60px}
+.key{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:12px;
+  min-height:68px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;cursor:pointer;
+  font-family:var(--display);font-weight:800;font-size:30px;line-height:1;touch-action:manipulation;transition:transform .08s}
+.key span{font-family:var(--body);font-size:11px;font-weight:500;color:var(--muted);letter-spacing:.02em;margin-top:4px}
+.key.zero{color:var(--bad)}
+.key.hit{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.key.hit span{color:var(--accent-ink);opacity:.85}
+.key:active{transform:scale(.96)}
+.key:focus-visible,.btn:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.btn{appearance:none;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:10px;padding:10px 14px;
+  font-family:var(--body);font-size:14px;font-weight:600;cursor:pointer;flex:1}
+.btn:disabled{opacity:.4;cursor:default}
+.btn.danger{color:var(--bad)}
+
+.who{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:5px}
+.tab{appearance:none;border:0;background:transparent;color:var(--ink);border-radius:8px;padding:8px 4px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0}
+.tab .nm{font-family:var(--display);font-weight:700;font-size:17px;letter-spacing:.03em;text-transform:uppercase;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.tab .tv{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.tab .tv.good{color:var(--good)} .tab .tv.bad{color:var(--bad)}
+.tab.on{background:var(--ink);color:var(--bg)}
+.tab.on .tv{color:var(--bg);opacity:.8}
+.tab:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.sync{font-size:12px;font-weight:600;color:var(--muted);display:flex;align-items:center;gap:6px}
+.sync::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
+.sync.live{color:var(--good)} .sync.off{color:var(--bad)}
+.team{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+section.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.chart svg{width:100%;height:auto;display:block}
+.log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;max-height:260px;overflow:auto}
+.log li{display:grid;grid-template-columns:52px 1fr auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
+.log li:last-child{border-bottom:0}
+.log .d{font-family:var(--mono);color:var(--muted);font-size:13px}
+.log .s{font-weight:600}
+.log .a{font-family:var(--mono);font-size:13px}
+.empty{color:var(--muted);font-size:14px;margin:0}
+.confirm{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--bad-soft);border-radius:10px;padding:10px}
+.confirm p{margin:0;flex:1 1 180px;font-size:14px}
+.settings{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.settings label{display:flex;flex-direction:column;gap:4px}
+.settings input{font-family:var(--mono);font-size:16px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);width:100%}
+details summary{cursor:pointer;font-weight:600;font-size:14px}
+.hint{font-size:13px;color:var(--muted);margin:0}
+
+.views{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px}
+.views .tab{flex-direction:row;justify-content:center;padding:10px 4px}
+.sub{display:flex;gap:6px;flex-wrap:wrap}
+.chip{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:7px 14px;font-weight:600;font-size:14px;cursor:pointer}
+.chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.chip:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.lb{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.lb li{display:grid;grid-template-columns:34px 1fr auto;gap:10px;align-items:center;padding:12px 4px;border-bottom:1px solid var(--line)}
+.lb li:last-child{border-bottom:0}
+.lb .rk{font-family:var(--display);font-weight:800;font-size:28px;color:var(--muted);text-align:center}
+.lb li.first .rk{color:var(--accent)}
+.lb .nm{font-family:var(--display);font-weight:700;font-size:21px;text-transform:uppercase;letter-spacing:.03em}
+.lb .nm em{font-style:normal;font-family:var(--body);font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-left:6px}
+.lb .sub2{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.lb .v{font-family:var(--display);font-weight:800;font-size:26px;font-variant-numeric:tabular-nums;text-align:right}
+.lb .v.good{color:var(--good)} .lb .v.bad{color:var(--bad)} .lb .v.idle{color:var(--muted)}
+.lb li.me{background:var(--bg);border-radius:10px}
+.picker{display:flex;flex-direction:column;gap:8px}
+.picker .btn{font-family:var(--display);font-size:22px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:14px}
+.who-line{font-size:13px;color:var(--muted)}
+.who-line b{color:var(--ink)}
+.claims{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.claims li{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px}
+.claims .btn{flex:0;padding:6px 10px;font-size:13px}
+@media (prefers-reduced-motion:reduce){.key{transition:none}}
+
+html,body{min-height:100%}
+body{padding-top:max(16px,env(safe-area-inset-top,0px));padding-bottom:max(40px,env(safe-area-inset-bottom,0px))}
+.login{display:flex;flex-direction:column;gap:10px}
+.login input{font-family:var(--body);font-size:16px;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);width:100%}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.top-links{display:flex;gap:12px;font-size:13px}
+.top-links a,.linkbtn{color:var(--muted);font-weight:600;background:none;border:0;padding:0;cursor:pointer;font:inherit;font-size:13px;text-decoration:underline}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Door Pace</h1>
+    <span class="sync" id="sync">Loading…</span>
+  </header>
+  <div class="who-line row" style="justify-content:space-between"><span class="num" id="rateLbl">$3/survey · goal $2/house</span><span class="top-links"><button class="linkbtn" id="signOut" type="button" hidden>Sign out</button></span></div>
+
+  <section class="card" id="loginCard" hidden>
+    <div class="label" id="loginTitle">Sign in</div>
+    <p class="hint" id="loginHint">Sign in with your Door Pace email and password.</p>
+    <form class="login" id="loginForm">
+      <input id="fullName" type="text" autocomplete="name" placeholder="First and last name" hidden>
+      <input id="email" type="email" autocomplete="username" placeholder="Email" required>
+      <input id="password" type="password" autocomplete="current-password" placeholder="Password (6+ characters)" required minlength="6">
+      <button class="btn primary" type="submit" id="loginBtn">Sign in</button>
+      <p class="hint" id="loginMsg"></p>
+    </form>
+    <p class="hint" id="modeLine">New canvasser? <button class="linkbtn" type="button" id="modeBtn">Create an account</button></p>
+  </section>
+
+  <section class="card" id="noAccess" hidden>
+    <div class="label" id="naTitle">Waiting for approval</div>
+    <p class="hint" id="naText">Your account is created. Victor needs to approve you before you can log doors. This page checks again every 30 seconds.</p>
+    <div class="row"><button class="btn" type="button" id="naRefresh">Check again</button></div>
+  </section>
+
+  <div class="views" id="views" role="tablist" aria-label="View" hidden></div>
+
+  <div id="paneMe" class="wrap" style="max-width:none;width:100%" hidden>
+    <div class="sub" id="teamPick" hidden></div>
+    <div class="meter" aria-live="polite">
+      <div class="label" id="whoLbl">Average per house this shift</div>
+      <div class="big">
+        <div class="avg" id="avg">$0.00<small>/house</small></div>
+        <span class="pill idle" id="pill">No doors yet</span>
+      </div>
+      <p class="msg" id="msg"></p>
+      <div class="stats">
+        <div><span class="label">Houses</span><span class="num" id="sH">0</span></div>
+        <div><span class="label">Surveys</span><span class="num" id="sS">0</span></div>
+        <div><span class="label">Earned</span><span class="num" id="sE">$0</span></div>
+        <div><span class="label">Hit rate</span><span class="num" id="sR">—</span></div>
+      </div>
+    </div>
+    <div class="pad" id="pad">
+      <div class="label">Log this door — surveys completed</div>
+      <div class="keys" id="keys"></div>
+      <div class="row">
+        <button class="btn" id="undo" type="button">Undo last door</button>
+        <button class="btn danger" id="end" type="button">End shift</button>
+      </div>
+      <div class="confirm" id="confirm" hidden>
+        <p id="confirmTxt">Save this shift and start fresh?</p>
+        <button class="btn" id="cNo" type="button" style="flex:0">Cancel</button>
+        <button class="btn danger" id="cYes" type="button" style="flex:0">Save &amp; reset</button>
+      </div>
+    </div>
+    <section class="card chart"><div class="label">Running average vs. goal</div><div id="chart"></div></section>
+    <section class="card"><div class="label">Doors this shift</div><ul class="log" id="log"></ul></section>
+    <section class="card"><div class="label">Past shifts</div><ul class="log" id="hist"></ul></section>
+  </div>
+
+  <div id="paneBoard" hidden>
+    <section class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <div class="label">Leaderboard · $ per house</div>
+        <div class="sub" id="lbMode"></div>
+      </div>
+      <ul class="lb" id="lb"></ul>
+      <p class="hint" id="lbHint"></p>
+    </section>
+  </div>
+
+  <section class="card" id="rosterCard" hidden>
+    <div class="label">Waiting for approval</div>
+    <ul class="claims" id="pendingList"></ul>
+    <div class="label" style="margin-top:6px">Team</div>
+    <ul class="claims" id="rosterList"></ul>
+    <p class="hint">New hires create their own account from the sign-in screen, then show up here.</p>
+  </section>
+
+  <section class="card" id="ownerCard" hidden>
+    <details>
+      <summary>Pay settings (admin)</summary>
+      <div class="settings" style="margin-top:10px">
+        <label><span class="label">$ per survey</span><input id="inRate" type="number" step="0.25" min="0.25" inputmode="decimal"></label>
+        <label><span class="label">Goal $ per house</span><input id="inGoal" type="number" step="0.25" min="0.25" inputmode="decimal"></label>
+      </div>
+      <p class="hint" style="margin-top:8px">Changes apply to everyone. Past shifts keep the rate they were saved with.</p>
+    </details>
+  </section>
+</div>
+
+<script>
+const SUPABASE_URL='https://nguyojoynjkmjrnfhikc.supabase.co';
+const SUPABASE_ANON_KEY='sb_publishable__8aFSnlyjD9Naisw9seoDg_y4euWVXg';
+(function(){
+  const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true}});
+  const $=id=>document.getElementById(id);
+  const money=v=>'$'+v.toFixed(2);
+  const money0=v=>'$'+(Math.round(v*100)/100).toLocaleString(undefined,{minimumFractionDigits:v%1?2:0,maximumFractionDigits:2});
+  const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  let uid=null,isAdmin=false,me=null,members=[],pay={rate:3,goal:2};let signup=false;
+  let mine={doors:[],shifts:[]}; const others={};
+  let board=[]; let view='me',teamId=null,lbMode='shift'; let busy=false;
+  function setSync(t,c){const el=$('sync');el.textContent=t;el.className='sync '+(c||'');}
+  const myName=()=>(me&&me.display_name)||'You';
+
+  // ---------- data ----------
+  async function loadMine(){
+    const [d,s]=await Promise.all([
+      sb.from('doors').select('id,surveys,created_at').eq('user_id',uid).order('created_at'),
+      sb.from('shifts').select('*').eq('user_id',uid).order('ended_at',{ascending:false}).limit(200)
+    ]);
+    if(d.error||s.error)throw d.error||s.error;
+    mine={doors:d.data.map(x=>({id:x.id,s:x.surveys,t:Date.parse(x.created_at)})),shifts:s.data};
+  }
+  async function loadOther(id){
+    const [d,s]=await Promise.all([
+      sb.from('doors').select('id,surveys,created_at').eq('user_id',id).order('created_at'),
+      sb.from('shifts').select('*').eq('user_id',id).order('ended_at',{ascending:false}).limit(200)
+    ]);
+    if(d.error||s.error)throw d.error||s.error;
+    others[id]={doors:d.data.map(x=>({id:x.id,s:x.surveys,t:Date.parse(x.created_at)})),shifts:s.data};
+  }
+  async function loadMembers(){const {data,error}=await sb.from('members').select('user_id,display_name,email,status,is_admin,created_at').order('created_at');if(error)throw error;members=data||[];}
+  async function loadBoard(){const {data,error}=await sb.rpc('leaderboard');if(error)throw error;board=data||[];}
+  async function loadPay(){const {data}=await sb.from('settings').select('rate,goal').eq('id',1).maybeSingle();if(data)pay={rate:+data.rate,goal:+data.goal};}
+  async function refresh(){
+    try{
+      const jobs=[loadMine(),loadBoard(),loadPay()];
+      if(isAdmin&&view==='team'&&teamId&&teamId!==uid)jobs.push(loadOther(teamId));
+      if(isAdmin)jobs.push(loadMembers());
+      await Promise.all(jobs); setSync('Live','live');
+    }catch(e){setSync('Offline — retrying','off');}
+    render();
+  }
+
+  // ---------- actions ----------
+  async function addDoor(n){
+    const t=Date.now(); const tmp={id:'tmp'+t,s:n,t}; mine.doors.push(tmp); render();
+    const {data,error}=await sb.from('doors').insert({surveys:n}).select('id,created_at').single();
+    if(error){mine.doors=mine.doors.filter(d=>d!==tmp);setSync('Not saved — check signal','off');render();return;}
+    tmp.id=data.id; tmp.t=Date.parse(data.created_at); loadBoard().then(render).catch(()=>{});
+  }
+  async function undo(){
+    const last=mine.doors[mine.doors.length-1]; if(!last||String(last.id).startsWith('tmp'))return;
+    mine.doors.pop(); render();
+    const {error}=await sb.from('doors').delete().eq('id',last.id);
+    if(error){mine.doors.push(last);setSync('Not saved — check signal','off');render();return;}
+    loadBoard().then(render).catch(()=>{});
+  }
+  async function endShift(){
+    const {error}=await sb.rpc('end_shift');
+    if(error){setSync('Couldn’t save shift','off');return;}
+    await refresh();
+  }
+  async function setStatus(id,status){
+    const {error}=await sb.from('members').update({status,approved_at:status==='active'?new Date().toISOString():null}).eq('user_id',id);
+    if(error){setSync('Not saved','off');return;} await refresh();
+  }
+  async function delShift(id){
+    const {error}=await sb.from('shifts').delete().eq('id',id);
+    if(error){setSync('Not deleted','off');return;} await refresh();
+  }
+  let payTimer=null;
+  function setPay(k,v){pay={...pay,[k]:v};render();clearTimeout(payTimer);
+    payTimer=setTimeout(async()=>{const {error}=await sb.from('settings').update({rate:pay.rate,goal:pay.goal,updated_at:new Date().toISOString()}).eq('id',1);if(error)setSync('Settings not saved','off');},600);}
+
+  // ---------- UI wiring ----------
+  [0,1,2,3,4,5,6,7,8,9,10].forEach(n=>{
+    const b=document.createElement('button');b.type='button';
+    b.className='key'+(n===0?' zero':' hit');b.id='k'+n;
+    b.innerHTML=n===0?'0<span>no survey at this house</span>':n;
+    b.setAttribute('aria-label','Log door with '+n+' surveys');
+    b.onclick=()=>{addDoor(n);if(navigator.vibrate){try{navigator.vibrate(15);}catch(e){}}};
+    $('keys').appendChild(b);
+  });
+  $('undo').onclick=undo;
+  $('end').onclick=()=>{const H=mine.doors.length;if(!H)return;const S=mine.doors.reduce((a,d)=>a+d.s,0);
+    $('confirmTxt').textContent=`Save this shift (${H} houses, ${money(S*pay.rate/H)}/house) and start fresh?`;$('confirm').hidden=false;};
+  $('cNo').onclick=()=>{$('confirm').hidden=true;};
+  $('cYes').onclick=()=>{$('confirm').hidden=true;endShift();};
+  $('inRate').oninput=e=>{const v=parseFloat(e.target.value);if(v>0)setPay('rate',v);};
+  $('inGoal').oninput=e=>{const v=parseFloat(e.target.value);if(v>0)setPay('goal',v);};
+  $('signOut').onclick=async()=>{await sb.auth.signOut();location.reload();};
+  function setMode(up){signup=up;$('fullName').hidden=!up;$('fullName').required=up;
+    $('loginTitle').textContent=up?'Create your account':'Sign in';
+    $('loginHint').textContent=up?'Use an email and password you’ll remember. Victor approves new canvassers before they can log doors.':'Sign in with your Door Pace email and password.';
+    $('loginBtn').textContent=up?'Create account':'Sign in';
+    $('password').autocomplete=up?'new-password':'current-password';
+    $('modeLine').innerHTML=up?'Already have an account? <button class="linkbtn" type="button" id="modeBtn">Sign in</button>':'New canvasser? <button class="linkbtn" type="button" id="modeBtn">Create an account</button>';
+    $('modeBtn').onclick=()=>setMode(!signup);$('loginMsg').textContent='';}
+  $('modeBtn').onclick=()=>setMode(true);
+  $('naRefresh').onclick=()=>start();
+  $('loginForm').onsubmit=async e=>{e.preventDefault();$('loginBtn').disabled=true;
+    const email=$('email').value.trim(),password=$('password').value;
+    if(signup){
+      const name=$('fullName').value.trim();
+      if(name.length<2){$('loginMsg').textContent='Enter your first and last name.';$('loginBtn').disabled=false;return;}
+      $('loginMsg').textContent='Creating your account…';
+      const {data,error}=await sb.auth.signUp({email,password,options:{data:{full_name:name}}});
+      $('loginBtn').disabled=false;
+      if(error){$('loginMsg').textContent=/registered|exists/i.test(error.message)?'That email already has an account. Tap Sign in below.':error.message;return;}
+      if(!data.session){const r=await sb.auth.signInWithPassword({email,password});
+        if(r.error){$('loginMsg').textContent='Account created. Check your email to confirm it, then sign in.';return;}}
+    }else{
+      $('loginMsg').textContent='Signing in…';
+      const {error}=await sb.auth.signInWithPassword({email,password});
+      $('loginBtn').disabled=false;
+      if(error){$('loginMsg').textContent='That email and password didn’t match.';return;}
+    }
+    $('loginMsg').textContent='';start();};
+
+  // ---------- render ----------
+  function fracTxt(x){for(let d=1;d<=10;d++){const n=Math.round(x*d);if(Math.abs(n/d-x)<1e-6)return `${n} survey${n>1?'s':''} every ${d} house${d>1?'s':''}`;}return `${x.toFixed(2)} surveys per house`;}
+  function render(){
+    $('rateLbl').textContent=`${money0(pay.rate)}/survey · goal ${money0(pay.goal)}/house`+(uid?` · ${myName()}`:'');
+    if(!uid)return;
+    const tabs=[['me','My pace'],['board','Leaderboard']]; if(isAdmin)tabs.push(['team','Team']);
+    $('views').hidden=false;
+    $('views').innerHTML=tabs.map(([k,l])=>`<button type="button" role="tab" class="tab${view===k?' on':''}" aria-selected="${view===k}" data-v="${k}"><span class="nm">${l}</span></button>`).join('');
+    $('views').querySelectorAll('.tab').forEach(b=>b.onclick=()=>{view=b.dataset.v;$('confirm').hidden=true;render();if(view!=='me')refresh();});
+    $('paneMe').hidden=!(view==='me'||view==='team');
+    $('paneBoard').hidden=view!=='board';
+    $('ownerCard').hidden=!isAdmin;
+    $('rosterCard').hidden=!(isAdmin&&view==='team');
+    if(isAdmin&&view==='team')drawRoster();
+    if(isAdmin){if(document.activeElement!==$('inRate'))$('inRate').value=pay.rate;if(document.activeElement!==$('inGoal'))$('inGoal').value=pay.goal;}
+    if(view==='board'){drawBoard();return;}
+    if(view==='team'){
+      const rest=members.filter(m=>m.status==='active').sort((a,b)=>(a.user_id===uid?-1:b.user_id===uid?1:0));
+      if(!teamId||!rest.some(m=>m.user_id===teamId))teamId=rest[0]&&rest[0].user_id;
+      $('teamPick').hidden=false;
+      $('teamPick').innerHTML=rest.map(m=>`<button type="button" class="chip${m.user_id===teamId?' on':''}" data-id="${m.user_id}">${esc(m.display_name)}</button>`).join('');
+      $('teamPick').querySelectorAll('.chip').forEach(b=>b.onclick=()=>{teamId=b.dataset.id;render();refresh();});
+      $('pad').hidden=true;
+      const m=rest.find(x=>x.user_id===teamId);
+      drawDetail(m?m.display_name:'—',teamId===uid?mine:(others[teamId]||{doors:[],shifts:[]}));
+    }else{$('teamPick').hidden=true;$('pad').hidden=false;drawDetail(myName(),mine);}
+  }
+  function drawDetail(name,data){
+    const r=pay.rate,g=pay.goal,m=data.doors,H=m.length,S=m.reduce((a,d)=>a+d.s,0),E=S*r;
+    $('whoLbl').textContent=name+'’s average per house this shift';
+    $('sH').textContent=H;$('sS').textContent=S;$('sE').textContent=money0(E);
+    $('sR').textContent=H?Math.round(m.filter(d=>d.s>0).length/H*100)+'%':'—';
+    $('undo').disabled=!H;$('end').disabled=!H;
+    const pill=$('pill'),msg=$('msg');
+    if(!H){$('avg').innerHTML='$0.00<small>/house</small>';pill.className='pill idle';pill.textContent='No doors yet';
+      msg.innerHTML=`Tap how many surveys you got at each door. ${fracTxt(g/r)} keeps you at ${money(g)}.`;}
+    else{const avg=E/H;$('avg').innerHTML=money(avg)+'<small>/house</small>';
+      if(avg>=g-1e-9){pill.className='pill good';pill.textContent='On pace';const c=Math.floor(E/g-H+1e-9);
+        msg.innerHTML=c>0?`Room for <b>${c}</b> more no-survey door${c>1?'s':''} and still at ${money(g)}.`:`Right on the line. The next no-survey door drops below ${money(g)}.`;}
+      else{pill.className='pill bad';pill.textContent='Behind';const sh=Math.ceil((g*H-E)/r-1e-9);
+        msg.innerHTML=`<b>${sh}</b> survey${sh>1?'s':''} short of ${money(g)}/house. Push for every adult in the next household.`;}}
+    drawChart(m);drawLog(m);drawHist(data.shifts);
+  }
+  function drawChart(m){
+    const W=480,Hh=150,pl=36,pr=10,pt=10,pb=22;const pts=[];let s=0;m.forEach((d,i)=>{s+=d.s;pts.push(s*pay.rate/(i+1));});
+    const g=pay.goal,maxY=Math.max(g*2,...pts,1),n=Math.max(pts.length,2);
+    const x=i=>pl+(W-pl-pr)*(i/(n-1)),y=v=>pt+(Hh-pt-pb)*(1-v/maxY);const ticks=[0,g,maxY>g*2?Math.ceil(maxY):g*2];
+    let svg=`<svg viewBox="0 0 ${W} ${Hh}" role="img" aria-label="Running average per house">`;
+    ticks.forEach(t=>{svg+=`<line x1="${pl}" x2="${W-pr}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)" stroke-width="1"/><text x="${pl-6}" y="${y(t)+4}" text-anchor="end" font-size="11" font-family="IBM Plex Mono,monospace" fill="var(--muted)">$${t%1?t.toFixed(2):t}</text>`;});
+    svg+=`<line x1="${pl}" x2="${W-pr}" y1="${y(g)}" y2="${y(g)}" stroke="var(--good)" stroke-width="1.5" stroke-dasharray="5 4"/>`;
+    if(!pts.length)svg+=`<text x="${(W+pl)/2}" y="${Hh/2+20}" text-anchor="middle" font-size="13" fill="var(--muted)" font-family="IBM Plex Sans,sans-serif">The line shows up after the first door</text>`;
+    else{const d=pts.map((v,i)=>`${i?'L':'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+      svg+=`<path d="${d} L${x(pts.length-1).toFixed(1)},${y(0)} L${x(0).toFixed(1)},${y(0)} Z" fill="var(--accent)" opacity=".12"/><path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+      const last=pts[pts.length-1];
+      svg+=`<circle cx="${x(pts.length-1)}" cy="${y(last)}" r="5" fill="${last>=g?'var(--good)':'var(--bad)'}" stroke="var(--surface)" stroke-width="2"/><text x="${pl}" y="${Hh-4}" font-size="11" fill="var(--muted)" font-family="IBM Plex Mono,monospace">door 1</text><text x="${W-pr}" y="${Hh-4}" text-anchor="end" font-size="11" fill="var(--muted)" font-family="IBM Plex Mono,monospace">door ${pts.length}</text>`;}
+    $('chart').innerHTML=svg+'</svg>';
+  }
+  function drawLog(m){const el=$('log');
+    if(!m.length){el.innerHTML='<li style="display:block"><p class="empty">Each door appears here with the running average.</p></li>';return;}
+    let s=0;const rows=m.map((d,i)=>{s+=d.s;return{i:i+1,s:d.s,avg:s*pay.rate/(i+1),t:d.t};});
+    el.innerHTML=rows.reverse().map(r=>{const tm=new Date(r.t).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
+      return `<li><span class="d">#${r.i}</span><span class="s">${r.s?r.s+' survey'+(r.s>1?'s':''):'<span style="color:var(--bad)">No survey</span>'} <span class="d">· ${tm}</span></span><span class="a" style="color:${r.avg>=pay.goal?'var(--good)':'var(--bad)'}">${money(r.avg)}</span></li>`;}).join('');}
+  function drawHist(sh){const el=$('hist');
+    if(!sh.length){el.innerHTML='<li style="display:block"><p class="empty">Tap “End shift” to save a day here.</p></li>';return;}
+    el.innerHTML=sh.map(h=>{const avg=h.surveys*h.rate/h.houses;const dt=new Date(h.started_at).toLocaleDateString([], {month:'short',day:'numeric'});
+      return `<li><span class="d">${dt}</span><span class="s">${h.houses} houses · ${h.surveys} surveys · ${money0(h.surveys*h.rate)}${isAdmin?` <button class="linkbtn" type="button" data-del="${h.id}">Delete</button>`:''}</span><span class="a" style="color:${avg>=pay.goal?'var(--good)':'var(--bad)'}">${money(avg)}</span></li>`;}).join('');
+    el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{if(b.dataset.armed){delShift(b.dataset.del);}else{b.dataset.armed='1';b.textContent='Tap again to delete';}});}
+  function drawRoster(){
+    const pend=members.filter(m=>m.status==='pending');
+    $('pendingList').innerHTML=pend.length?pend.map(m=>`<li><span><b>${esc(m.display_name)}</b><br><span class="hint">${esc(m.email)}</span></span><span class="row" style="flex-wrap:nowrap"><button class="btn danger" type="button" data-id="${m.user_id}" data-s="removed">Decline</button><button class="btn primary" type="button" data-id="${m.user_id}" data-s="active">Approve</button></span></li>`).join(''):'<li><span class="hint">No one waiting.</span></li>';
+    const act=members.filter(m=>m.status==='active');
+    $('rosterList').innerHTML=act.map(m=>`<li><span>${esc(m.display_name)}${m.is_admin?' · admin':''}<br><span class="hint">${esc(m.email)}</span></span>${m.user_id===uid||m.is_admin?'':`<button class="btn danger" type="button" data-id="${m.user_id}" data-s="removed">Remove</button>`}</li>`).join('');
+    document.querySelectorAll('#pendingList button,#rosterList button').forEach(b=>b.onclick=()=>{b.disabled=true;setStatus(b.dataset.id,b.dataset.s);});
+  }
+  function drawBoard(){
+    $('lbMode').innerHTML=[['shift','This shift'],['week','This week']].map(([k,l])=>`<button type="button" class="chip${lbMode===k?' on':''}" data-m="${k}">${l}</button>`).join('');
+    $('lbMode').querySelectorAll('.chip').forEach(b=>b.onclick=()=>{lbMode=b.dataset.m;render();});
+    const rows=board.map(b=>{const H=lbMode==='shift'?b.cur_houses:b.week_houses,S=lbMode==='shift'?b.cur_surveys:b.week_surveys;
+      return{n:b.display_name,H,S,avg:H?S*pay.rate/H:null,me:b.user_id===uid};});
+    rows.sort((a,b)=>(b.avg??-1)-(a.avg??-1)||b.H-a.H);let rank=0;
+    $('lb').innerHTML=rows.map((r,i)=>{if(r.avg!==null)rank=i+1;const cls=r.avg===null?'idle':(r.avg>=pay.goal-1e-9?'good':'bad');
+      return `<li class="${r.me?'me':''}${r.avg!==null&&rank===1?' first':''}"><span class="rk">${r.avg===null?'–':rank}</span><span><span class="nm">${esc(r.n)}${r.me?'<em>you</em>':''}</span><br><span class="sub2">${r.H} houses · ${r.S} surveys · ${money0(r.S*pay.rate)}</span></span><span class="v ${cls}">${r.avg===null?'—':money(r.avg)}</span></li>`;}).join('');
+    $('lbHint').textContent=lbMode==='shift'?'Ranked by $ per house on the current shift. Refreshes every 15 seconds.':'Ranked by $ per house since Monday, finished shifts plus the one in progress.';
+  }
+
+  // ---------- boot ----------
+  let timer=null;
+  async function start(){
+    const {data:{session}}=await sb.auth.getSession();
+    if(!session){$('loginCard').hidden=false;setSync('Signed out','off');return;}
+    uid=session.user.id;$('loginCard').hidden=true;$('signOut').hidden=false;
+    const {data:row,error:mErr}=await sb.from('members').select('*').eq('user_id',uid).maybeSingle();
+    if(mErr||!row){setSync('Setup pending','off');$('noAccess').hidden=false;$('naTitle').textContent='Not ready yet';$('naText').textContent='Door Pace’s database isn’t finished being set up. Try again shortly.';return;}
+    me=row;
+    if(row.status!=='active'){
+      $('noAccess').hidden=false;$('views').hidden=true;$('paneMe').hidden=true;$('paneBoard').hidden=true;
+      if(row.status==='removed'){$('naTitle').textContent='No access';$('naText').textContent='This account isn’t on the canvassing team. Talk to Victor if that’s a mistake.';$('naRefresh').hidden=true;setSync('No access','off');return;}
+      $('naTitle').textContent='Waiting for approval';$('naText').textContent=`Thanks, ${row.display_name}. Victor needs to approve you before you can log doors. This page checks again every 30 seconds.`;
+      setSync('Pending','off');clearTimeout(window.__pend);window.__pend=setTimeout(start,30000);return;}
+    $('noAccess').hidden=true;
+    isAdmin=!!row.is_admin;
+    if(isAdmin)await loadMembers();
+    await refresh();
+    clearInterval(timer);timer=setInterval(()=>{if(!document.hidden&&!busy)refresh();},15000);
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});
+  }
+  start();
+})();
+</script>
+</body>
+</html>

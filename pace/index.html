@@ -55,7 +55,10 @@ h1{font-family:var(--display);font-weight:800;font-size:28px;letter-spacing:.02e
 .stats .num{font-size:18px;font-weight:600}
 
 .pad{display:flex;flex-direction:column;gap:8px}
-.keys{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.keys{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.keys .key.zero{grid-column:1/-1;flex-direction:row;gap:10px;min-height:56px}
+.keys .key.zero span{margin-top:0}
+.keys .key{min-height:60px}
 .key{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:12px;
   min-height:68px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;cursor:pointer;
   font-family:var(--display);font-weight:800;font-size:30px;line-height:1;touch-action:manipulation;transition:transform .08s}
@@ -286,10 +289,10 @@ const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
     payTimer=setTimeout(async()=>{const {error}=await sb.from('canvass_settings').update({rate:pay.rate,goal:pay.goal,updated_at:new Date().toISOString()}).eq('id',1);if(error)setSync('Settings not saved','off');},600);}
 
   // ---------- UI wiring ----------
-  [[0,'no survey'],[1,'survey'],[2,'surveys'],[3,'surveys'],[4,'surveys'],[5,'surveys']].forEach(([n,t])=>{
+  [0,1,2,3,4,5,6,7,8,9,10].forEach(n=>{
     const b=document.createElement('button');b.type='button';
     b.className='key'+(n===0?' zero':' hit');b.id='k'+n;
-    b.innerHTML=(n===5?'5+':n)+'<span>'+t+'</span>';
+    b.innerHTML=n===0?'0<span>no survey at this house</span>':n;
     b.setAttribute('aria-label','Log door with '+n+' surveys');
     b.onclick=()=>{addDoor(n);if(navigator.vibrate){try{navigator.vibrate(15);}catch(e){}}};
     $('keys').appendChild(b);

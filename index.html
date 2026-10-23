@@ -226,6 +226,7 @@ button{cursor:pointer}
 .pi-sum{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:12px 0}
 .pi-tot{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px;text-align:center}
 .pi-tot b{display:block;font-size:1.3rem}
+.pi-date{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:2px 6px;margin:0 2px}
 .pi-tot span{font-size:.75rem;color:var(--muted)}
 .pi-list{max-height:220px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:10px}
 .pi-row{font-size:.84rem;padding:4px 0;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:8px}
@@ -3392,6 +3393,13 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       const xlDate=v=>{ if(!v) return ''; if(v instanceof Date) return iso(v);
         const m=norm(v).match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/); if(!m) return '';
         const y=m[3].length===2?'20'+m[3]:m[3]; return y+'-'+String(+m[1]).padStart(2,'0')+'-'+String(+m[2]).padStart(2,'0'); };
+      // One report is one payment, so every line in it belongs to the same statement date.
+      // Older reports carry PaymentDate and it is the same on every row. Newer ones dropped
+      // that column, and the activation dates in them are spread over weeks — filing by those
+      // would scatter a single payment across several statements. So when PaymentDate is
+      // gone, the whole file goes under the Friday of the week it is imported.
+      const fileHasPayDate=rows.some(r=>norm(r.PaymentDate)!=='');
+      const fallbackPayDate=nearestFriday(todayISO());
       let used=0;
       rows.forEach(r=>{
         const doc=norm(r.DocumentNum||r.documentnum||r['Document Num']);
@@ -3401,7 +3409,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         const repName=norm(r.SalesAgentName), matchedAgent=findAgent(repName);
         if(repName&&!matchedAgent) unknownNames.add(repName);
         const rowKind=/^[A-Z]{2}\d{6,}$/.test(mon)?'internet':(digits10(doc).length===10?'wireless':'other');
-        const payDate=nearestFriday(xlDate(payRowDate(r))), prod=norm(r.Product)||norm(r.Program);
+        const payDate=fileHasPayDate?nearestFriday(xlDate(r.PaymentDate)):fallbackPayDate;
+        const prod=norm(r.Product)||norm(r.Program);
         // one statement line per order or per phone number, however many commission rows it has
         const itemKey=(rowKind==='wireless'?'w:'+digits10(doc):rowKind==='internet'?'i:'+mon:'o:'+doc)+'|'+payDate;
         let item=itemsBy.get(itemKey);
@@ -3463,7 +3472,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         if(rec&&rec.payoutStatus===st){ m.delete(id); already.push(1); } }); };
       drop(plan.installsPaid,'paid',state.installs||[]); drop(plan.installsCb,'charged_back',state.installs||[]);
       drop(plan.linesPaid,'paid',state.wlines||[]); drop(plan.linesCb,'charged_back',state.wlines||[]);
-      payPlan={plan,file:file.name,missing,already,items,companyOnly,unknownNames:[...unknownNames]};
+      payPlan={plan,file:file.name,missing,already,items,companyOnly,unknownNames:[...unknownNames],
+               payDate:fileHasPayDate?'':fallbackPayDate};
       renderPayPreview();
       tmSay(msg,used+' rows read from '+file.name+whereNote+'.','ok');
     }catch(err){ tmSay(msg,err.message||'Couldn\'t read that file.','err'); }
@@ -3479,6 +3489,21 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       .concat(coN?[[coN,'company cut only']]:[])
       .forEach(([v,l])=>{ const d=document.createElement('div'); d.className='pi-tot'; const b=document.createElement('b'); b.textContent=v; const sp=document.createElement('span'); sp.textContent=l; d.append(b,sp); sum.append(d); });
     box.append(sum);
+    // This report carries no payment date of its own, so say which statement week it lands
+    // on and let it be moved — a report opened on Monday is usually Friday's pay.
+    if(payPlan.payDate){
+      const w=document.createElement('p'); w.className='note'; w.style.margin='8px 0 0';
+      w.append('This report has no payment date in it, so everything goes on the statement for ');
+      const inp=document.createElement('input'); inp.type='date'; inp.value=payPlan.payDate;
+      inp.className='pi-date'; inp.setAttribute('aria-label','Statement date for this report');
+      inp.onchange=()=>{
+        const v=inp.value; if(!v) { inp.value=payPlan.payDate; return; }
+        (payPlan.items||[]).forEach(it=>{ it.payment_date=v; });
+        payPlan.payDate=v;
+      };
+      w.append(inp, '.');
+      box.append(w);
+    }
     // The tiles above count what this import can act on. When the report holds more than
     // that, the difference is orders that aren't on the board — easy to misread otherwise.
     const gapCb=inReport.cb-cbN, gapPaid=inReport.paid-(paidN+coN);

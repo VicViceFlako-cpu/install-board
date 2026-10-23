@@ -3287,7 +3287,11 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     PaymentDate:['paymentdate','payment date','pay date','paid date'],
     Product:['product','product name'],
     Program:['program','program name'],
-    PaidAmount:['paidamount','paid amount','commission','commission amount'],
+    PaidAmount:['paidamount','paid amount','commission','commission amount','amount'],
+    // Verizon dropped PaymentDate in October 2026 and left only the activation date.
+    // Kept separate from PaymentDate so that on older reports, which carry both,
+    // the real payment date still wins.
+    ActivationDate:['activationdeactivationdate','activation deactivation date','activationdate','activation date'],
     Category:['category','commission type'],
     Comments:['comments','comment','notes','note']
   };
@@ -3302,7 +3306,11 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     });
     return out;
   }
-  const payRowUsable=r=>!!norm(r.DocumentNum)&&(!!norm(r.PaidAmount)||!!norm(r.PaymentDate)||!!norm(r.Status));
+  const payRowUsable=r=>!!norm(r.DocumentNum)&&(!!norm(r.PaidAmount)||!!norm(r.PaymentDate)||!!norm(r.Status)||!!norm(r.ActivationDate));
+  // The date a statement line is filed under. Newer reports have no PaymentDate at all,
+  // so the activation date stands in; older reports still use PaymentDate.
+  // Returns the raw cell, not a string: xlDate needs real Date objects to stay Dates.
+  const payRowDate=r=>norm(r.PaymentDate)!==''?r.PaymentDate:r.ActivationDate;
   function findPayRows(XLSX,wb){
     const tried=[];
     const filled=l=>(l||[]).some(c=>norm(c)!=='');
@@ -3315,7 +3323,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       for(let r=0;r<Math.min(grid.length,30);r++){
         const low=(grid[r]||[]).map(payKey);
         const hasDoc=low.some(h=>PAY_ALIASES.DocumentNum.includes(h));
-        const hasPair=['Status','PaidAmount','PaymentDate'].some(k=>low.some(h=>PAY_ALIASES[k].includes(h)));
+        const hasPair=['Status','PaidAmount','PaymentDate','ActivationDate'].some(k=>low.some(h=>PAY_ALIASES[k].includes(h)));
         if(!hasDoc||!hasPair) continue;
         const head=(grid[r]||[]).map(c=>norm(c));
         const rows=[];
@@ -3361,6 +3369,24 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
       await loadReportNames();
       const byName={}; Object.entries(state.profiles||{}).forEach(([id,p])=>{ const n=nameKey(p.full_name); if(n) byName[n]=id; });
       Object.entries(state.reportNames||{}).forEach(([k,v])=>{ if(v.userId) byName[k]=v.userId; });
+      // Verizon writes some rows LAST FIRST ("BEAUVIL CLAUDE") and others FIRST LAST.
+      // Build a second index keyed on the name's words in alphabetical order, so either
+      // spelling finds the same person. A key two different people share is dropped
+      // rather than guessed at.
+      const bySorted={};
+      Object.entries(byName).forEach(([k,id])=>{
+        const s=k.split(' ').filter(Boolean).sort().join(' ');
+        if(!s) return;
+        if(bySorted[s]===undefined) bySorted[s]=id;
+        else if(bySorted[s]!==id) bySorted[s]=null;
+      });
+      // Exact spelling first; only then the any-order match.
+      const findAgent=raw=>{
+        const k=nameKey(raw); if(!k) return '';
+        if(byName[k]) return byName[k];
+        const s=k.split(' ').filter(Boolean).sort().join(' ');
+        return bySorted[s]||'';
+      };
       const unknownNames=new Set(), itemsBy=new Map(), missSeen=new Set();
       const addMissing=(doc,who)=>{ const k=doc+'|'+who; if(missSeen.has(k)) return; missSeen.add(k); missing.push({doc,who}); };
       const xlDate=v=>{ if(!v) return ''; if(v instanceof Date) return iso(v);
@@ -3372,10 +3398,10 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         if(!doc||!payRowUsable(r)) return;
         used++;
         const kind=payRowKind(r), who=norm(r.CustomerName)||norm(r.SalesAgentName)||doc, mon=doc.toUpperCase();
-        const repName=norm(r.SalesAgentName), matchedAgent=byName[nameKey(repName)]||'';
+        const repName=norm(r.SalesAgentName), matchedAgent=findAgent(repName);
         if(repName&&!matchedAgent) unknownNames.add(repName);
         const rowKind=/^[A-Z]{2}\d{6,}$/.test(mon)?'internet':(digits10(doc).length===10?'wireless':'other');
-        const payDate=nearestFriday(xlDate(r.PaymentDate)), prod=norm(r.Product)||norm(r.Program);
+        const payDate=nearestFriday(xlDate(payRowDate(r))), prod=norm(r.Product)||norm(r.Program);
         // one statement line per order or per phone number, however many commission rows it has
         const itemKey=(rowKind==='wireless'?'w:'+digits10(doc):rowKind==='internet'?'i:'+mon:'o:'+doc)+'|'+payDate;
         let item=itemsBy.get(itemKey);

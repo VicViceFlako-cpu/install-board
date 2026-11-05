@@ -1418,6 +1418,30 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   // A date sitting beside its label — same line, or on one of the next few lines.
   // Only what follows the label is read, so "Order Date 9/28 Due Date 10/9" on one line
   // doesn't hand both fields the same date.
+  //
+  // Some copies stack the labels first and the values after, in matching order:
+  //   Order Date / Due Date / 11/5/2026 / 11/14/2026
+  // Read line by line, "Due Date" grabs 11/5 — the order date. So before anything else,
+  // look for a run of label lines followed by exactly as many value lines and pair them
+  // off by position. Only acted on when both of the dates it yields are real dates and
+  // the counts line up, so a field with no value at all can't shift the pairing.
+  function stackedDates(lines,low){
+    for(let i=0;i<lines.length;i++){
+      if(!isLabel(lines[i])) continue;
+      let j=i; while(j<lines.length&&isLabel(lines[j])) j++;
+      const labs=low.slice(i,j).map(s=>s.trim());
+      const iOrder=labs.indexOf('order date'), iDue=labs.indexOf('due date');
+      if(iOrder<0||iDue<0){ i=j; continue; }
+      let k=j; while(k<lines.length&&!isLabel(lines[k])) k++;
+      const vals=lines.slice(j,k);
+      if(vals.length===labs.length){
+        const o=findDates(vals[iOrder]), d=findDates(vals[iDue]);
+        if(o.length&&d.length) return {order:o[0], due:d[0]};
+      }
+      i=j;
+    }
+    return null;
+  }
   function dateNear(lines,low,re){
     for(let i=0;i<lines.length;i++){
       const m=re.exec(low[i]); if(!m) continue;
@@ -1496,8 +1520,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     // Dates: the paste interleaves labels and values, and the order varies. Take every date
     // in the text, then read them chronologically: earliest = sale (Order Date), latest = install (Due Date).
     const iOrder=idx('order date'), iDue=idx('due date');
-    const orderD=dateNear(lines,low,/order\s*date|sale\s*date|date\s*(placed|ordered|sold)/);
-    const dueD  =dateNear(lines,low,/due\s*date|install(ation)?\s*date|appointment\s*date|service\s*date|scheduled\s*(for|date)/);
+    const stacked=stackedDates(lines,low);
+    const orderD=(stacked&&stacked.order)||dateNear(lines,low,/order\s*date|sale\s*date|date\s*(placed|ordered|sold)/);
+    const dueD  =(stacked&&stacked.due)||dateNear(lines,low,/due\s*date|install(ation)?\s*date|appointment\s*date|service\s*date|scheduled\s*(for|date)/);
     const allDates=[...new Set(findDates(text))].sort();
     if(orderD&&dueD){ out.saleDate=orderD; out.installDate=dueD; }
     else if(dueD){ out.installDate=dueD; out.saleDate=allDates.filter(d=>d<dueD).pop()||''; }

@@ -1484,7 +1484,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     ['altphone', /alternate\s*telephone\s*number/gi],
     ['address',  /service\s*address/gi],
     // "MON" only counts when a real order number follows, so it can't match a stray word
-    ['mon',      /M[O0]N(?=[\s:#.\-]*[A-Za-z]{2}[\s\-]*\d)/g],
+    // a MON label also counts when the next label sits right after it (labels stacked, values below)
+    ['mon',      /M[O0]N(?=[\s:#.\-]*(?:[A-Za-z]{2}[\s\-]*\d|order\s*type))/g],
     ['orderType',/order\s*type/gi],
     ['saleDate', /order\s*date/gi],
     ['installDate', /due\s*date/gi],
@@ -1588,7 +1589,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     if(cPh.length===10) out.phone=cPh;
     if(!out.mon){ const cMo=cleanMon(String(ch.mon||'')); if(cMo) out.mon=cMo; }
     // The rest only fill a gap — the line reading is already careful about these.
-    if(!out.orderType&&ch.orderType) out.orderType=one(ch.orderType).slice(0,40);
+    if(!out.orderType&&ch.orderType) out.orderType=one(ch.orderType).replace(/^[A-Z]{2}[\s\-]*(?:\d[\s\-]?){11}\s*/i,'').trim().slice(0,40);
     if(!out.vzStatus&&ch.status&&/^(confirmed|pending|scheduled|completed|cancell?ed|held|in progress)$/i.test(one(ch.status))) out.vzStatus=one(ch.status);
     if(!out.window&&!out.selfInstall&&ch.window){ const w=String(ch.window).match(WIN_RE); if(w) out.window=winPair(w); }
     if(!out.saleDate&&ch.saleDate){ const d=findDates(String(ch.saleDate)); if(d.length) out.saleDate=d[0]; }

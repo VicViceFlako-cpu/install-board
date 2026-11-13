@@ -1484,13 +1484,39 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     ['altphone', /alternate\s*telephone\s*number/gi],
     ['address',  /service\s*address/gi],
     // "MON" only counts when a real order number follows, so it can't match a stray word
-    ['mon',      /MON(?=\s*[A-Z]{2}\s*\d{8,14})/g],
+    ['mon',      /M[O0]N(?=[\s:#.\-]*[A-Za-z]{2}[\s\-]*\d)/g],
     ['orderType',/order\s*type/gi],
     ['saleDate', /order\s*date/gi],
     ['installDate', /due\s*date/gi],
     ['window',   /appointment\s*(?:time|window)/gi],
     ['status',   /\bstatus\b/gi]
   ];
+  // ---------- order number (MON) ----------
+  // A MON is two letters then 11 digits (NY12342674074). Copies don't always keep it tidy:
+  // Live Text can split it ("NY 1234 2674074"), swap a 0 for an O, lowercase the letters,
+  // or the label can run straight into it ("MONNY1234…", "MON: NY…", "MON #").
+  // So: squeeze out spaces/dashes, fix look-alike characters in the digit part, then check.
+  function cleanMon(s){
+    const t=String(s||'').toUpperCase().replace(/^[\s:#.\-]+/,'');
+    const m=/^([A-Z]{2})((?:[\s\-]*[0-9OQDIL|SB]){11})(?![\s\-]*[0-9])/.exec(t);
+    if(!m) return '';
+    const fix={O:'0',Q:'0',D:'0',I:'1',L:'1','|':'1',S:'5',B:'8'};
+    const dg=m[2].replace(/[\s\-]/g,'').replace(/[OQDIL|SB]/g,c=>fix[c]);
+    // look-alikes are only trusted when most of it really is digits
+    if((m[2].match(/[0-9]/g)||[]).length<9) return '';
+    return m[1]+dg;
+  }
+  function readMon(text){
+    // 1) right after a MON / order-number label
+    const lab=/(?:\bM[O0]N|M[O0]N(?=[A-Za-z]{2}[\s\-]*\d)|order\s*(?:number|no\.?|#))/gi;
+    let m;
+    while((m=lab.exec(text))){ const v=cleanMon(text.slice(m.index+m[0].length,m.index+m[0].length+40)); if(v) return v; }
+    // 2) anywhere: two capital letters then 11 digits, allowing spaces/dashes inside
+    const re=/(?:^|[^A-Za-z])([A-Z]{2}(?:[\s\-]?\d){11})(?![\s\-]?\d)/g;
+    while((m=re.exec(text))){ const v=cleanMon(m[1]); if(v) return v; }
+    // 3) old rule as a last resort (any length 8–14), so nothing that used to read stops reading
+    const old=text.match(/[A-Z]{2}\d{8,14}(?!\d)/); return old?old[0]:'';
+  }
   function tidyPaste(t){
     return String(t||'')
       .replace(/\r\n?/g,'\n')          // Windows and old-Mac line endings
@@ -1537,7 +1563,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     if(nm&&!/\d{5,}/.test(nm)) out.customer=nm;
     const adl=valueNear(lines,low,/service\s*address|install(ation)?\s*address/);
     out.address=(adl&&/[a-z]/i.test(adl)&&/\d/.test(adl)&&!/^[A-Z]{2}\d{8,14}$/.test(adl))?adl:'';
-    const mon=text.match(/\b[A-Z]{2}\d{8,14}\b/); out.mon=mon?mon[0]:'';
+    out.mon=readMon(text);
     const ot=lines.find(l=>/^(new install|move|change|upgrade|transfer|reconnect|add|modify)\b/i.test(l)&&!isLabel(l)); out.orderType=ot||'';
     // Appointment window: Verizon writes this several ways (8 AM to 12 PM, 1:00 PM - 5:00 PM,
     // "between 8:00 AM and 12:00 PM", or the two times on separate lines). Look beside the label
@@ -1560,8 +1586,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     if(cAd&&/[a-z]/i.test(cAd)&&/\d/.test(cAd)&&!/^[A-Z]{2}\d{8,14}$/.test(cAd)) out.address=cAd;
     const cPh=(String(ch.phone||'').match(/\d[\d\s().-]{8,}\d/)||[''])[0].replace(/\D/g,'');
     if(cPh.length===10) out.phone=cPh;
-    const cMo=String(ch.mon||'').replace(/\s+/g,'').match(/^[A-Z]{2}\d{8,14}/);
-    if(cMo) out.mon=cMo[0];
+    if(!out.mon){ const cMo=cleanMon(String(ch.mon||'')); if(cMo) out.mon=cMo; }
     // The rest only fill a gap — the line reading is already careful about these.
     if(!out.orderType&&ch.orderType) out.orderType=one(ch.orderType).slice(0,40);
     if(!out.vzStatus&&ch.status&&/^(confirmed|pending|scheduled|completed|cancell?ed|held|in progress)$/i.test(one(ch.status))) out.vzStatus=one(ch.status);
